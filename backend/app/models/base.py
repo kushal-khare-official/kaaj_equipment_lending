@@ -1,8 +1,7 @@
 from datetime import datetime
 import uuid
 
-from sqlalchemy import Column, DateTime
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, DateTime, Uuid
 
 from app.db import Base
 
@@ -13,5 +12,5 @@ class TimestampMixin:
 
 
 class UUIDMixin:
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
 

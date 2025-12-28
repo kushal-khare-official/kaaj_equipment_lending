@@ -81,3 +81,62 @@ export async function updateLenderName(lenderId: string, name: string) {
   return res.json()
 }
 
+export type LenderCriteriaInput = {
+  field_key: string
+  data_type: string
+  operator: string
+  value_min?: string
+  value_max?: string
+  values?: string[]
+  pattern?: string
+  description?: string
+}
+
+export type LenderProgramInput = {
+  name: string
+  description?: string
+  criteria: LenderCriteriaInput[]
+}
+
+export type LenderCreateInput = {
+  name: string
+  programs: LenderProgramInput[]
+}
+
+export async function createLender(payload: LenderCreateInput) {
+  const res = await fetch(`${API_BASE}/lenders`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Role": "underwriter",
+    },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) throw new Error("failed to create lender")
+  return res.json()
+}
+
+export async function deleteLender(lenderId: string) {
+  const res = await fetch(`${API_BASE}/lenders/${lenderId}`, {
+    method: "DELETE",
+    headers: {
+      "X-Role": "underwriter",
+    },
+  })
+  if (!res.ok) throw new Error("failed to delete lender")
+  return
+}
+
+export async function updateLender(lenderId: string, payload: Partial<LenderCreateInput>) {
+  const res = await fetch(`${API_BASE}/lenders/${lenderId}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Role": "underwriter",
+    },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) throw new Error("failed to update lender")
+  return res.json()
+}
+

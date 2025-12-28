@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -5,6 +7,7 @@ from app.db import get_db
 from datetime import datetime
 
 from app.models.lender import Lender, LenderProgram, LenderCriteria, PolicyVersion
+from app.models.application import MatchResult
 from app.schemas.lender import LenderCreate, LenderOut, LenderUpdate
 from app.services.audit_logger import log_action
 
@@ -31,21 +34,44 @@ def list_lenders(db: Session = Depends(get_db)):
 
 
 @router.get("/{lender_id}", response_model=LenderOut)
-def get_lender(lender_id: str, db: Session = Depends(get_db)):
+def get_lender(lender_id: UUID, db: Session = Depends(get_db)):
     lender = db.query(Lender).filter(Lender.id == lender_id).first()
     if not lender:
         raise HTTPException(status_code=404, detail="Lender not found")
     return lender
 
 
+@router.delete("/{lender_id}", status_code=204)
+def delete_lender(lender_id: UUID, db: Session = Depends(get_db)):
+    lender = db.query(Lender).filter(Lender.id == lender_id).first()
+    if not lender:
+        raise HTTPException(status_code=404, detail="Lender not found")
+    # Nullify match_results references before deleting programs
+    program_ids = [p.id for p in lender.programs]
+    if program_ids:
+        db.query(MatchResult).filter(MatchResult.lender_program_id.in_(program_ids)).update(
+            {MatchResult.lender_program_id: None}, synchronize_session=False
+        )
+    db.delete(lender)
+    db.commit()
+    log_action(db, actor="underwriter", entity_type="lender", entity_id=lender_id, action="delete_lender", payload={"lender_id": str(lender_id)})
+    return None
+
+
 @router.patch("/{lender_id}", response_model=LenderOut)
-def update_lender(lender_id: str, payload: LenderUpdate, db: Session = Depends(get_db)):
+def update_lender(lender_id: UUID, payload: LenderUpdate, db: Session = Depends(get_db)):
     lender = db.query(Lender).filter(Lender.id == lender_id).first()
     if not lender:
         raise HTTPException(status_code=404, detail="Lender not found")
     if payload.name:
         lender.name = payload.name
-    if payload.programs:
+    if payload.programs is not None and len(payload.programs) > 0:
+        # Nullify match_results references before deleting old programs
+        program_ids = [p.id for p in lender.programs]
+        if program_ids:
+            db.query(MatchResult).filter(MatchResult.lender_program_id.in_(program_ids)).update(
+                {MatchResult.lender_program_id: None}, synchronize_session=False
+            )
         lender.programs.clear()
         for p in payload.programs:
             program = LenderProgram(name=p.name, description=p.description)

@@ -1,8 +1,7 @@
 from datetime import datetime
 import uuid
 
-from sqlalchemy import Boolean, Column, Date, DateTime, Enum, ForeignKey, Integer, Numeric, String, JSON
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, Column, Date, DateTime, Enum, ForeignKey, Integer, Numeric, String, JSON, Uuid
 from sqlalchemy.orm import relationship
 
 from app.db import Base
@@ -28,7 +27,7 @@ class Application(TimestampMixin, UUIDMixin, Base):
 class Guarantor(TimestampMixin, UUIDMixin, Base):
     __tablename__ = "guarantors"
 
-    application_id = Column(UUID(as_uuid=True), ForeignKey("applications.id"), nullable=False)
+    application_id = Column(Uuid, ForeignKey("applications.id"), nullable=False)
     is_primary = Column(Boolean, default=True, nullable=False)
     first_name = Column(String, nullable=True)
     last_name = Column(String, nullable=True)
@@ -43,7 +42,7 @@ class Guarantor(TimestampMixin, UUIDMixin, Base):
 class BusinessCredit(TimestampMixin, UUIDMixin, Base):
     __tablename__ = "business_credit"
 
-    application_id = Column(UUID(as_uuid=True), ForeignKey("applications.id"), nullable=False, unique=True)
+    application_id = Column(Uuid, ForeignKey("applications.id"), nullable=False, unique=True)
     paynet_score = Column(Integer, nullable=True)
     tradelines = Column(JSON, nullable=True)
     revolving_utilization = Column(Integer, nullable=True)
@@ -54,7 +53,7 @@ class BusinessCredit(TimestampMixin, UUIDMixin, Base):
 class Equipment(TimestampMixin, UUIDMixin, Base):
     __tablename__ = "equipment"
 
-    application_id = Column(UUID(as_uuid=True), ForeignKey("applications.id"), nullable=False)
+    application_id = Column(Uuid, ForeignKey("applications.id"), nullable=False)
     type = Column(String, nullable=True)
     year = Column(Integer, nullable=True)
     mileage = Column(Integer, nullable=True)
@@ -68,7 +67,7 @@ class Equipment(TimestampMixin, UUIDMixin, Base):
 class LoanRequest(TimestampMixin, UUIDMixin, Base):
     __tablename__ = "loan_requests"
 
-    application_id = Column(UUID(as_uuid=True), ForeignKey("applications.id"), nullable=False, unique=True)
+    application_id = Column(Uuid, ForeignKey("applications.id"), nullable=False, unique=True)
     amount = Column(Numeric(14, 2), nullable=True)
     term_months = Column(Integer, nullable=True)
     down_payment = Column(Numeric(14, 2), nullable=True)
@@ -79,7 +78,7 @@ class LoanRequest(TimestampMixin, UUIDMixin, Base):
 class DocumentRequest(TimestampMixin, UUIDMixin, Base):
     __tablename__ = "document_requests"
 
-    application_id = Column(UUID(as_uuid=True), ForeignKey("applications.id"), nullable=False)
+    application_id = Column(Uuid, ForeignKey("applications.id"), nullable=False)
     type = Column(String, nullable=False)
     status = Column(Enum(DocumentStatus, name="document_status"), nullable=False, default=DocumentStatus.REQUESTED)
     requested_by = Column(String, nullable=True)
@@ -91,7 +90,7 @@ class DocumentRequest(TimestampMixin, UUIDMixin, Base):
 class DocumentUpload(TimestampMixin, UUIDMixin, Base):
     __tablename__ = "document_uploads"
 
-    request_id = Column(UUID(as_uuid=True), ForeignKey("document_requests.id"), nullable=False)
+    request_id = Column(Uuid, ForeignKey("document_requests.id"), nullable=False)
     url = Column(String, nullable=False)
     status = Column(String, nullable=True)
     metadata_json = Column(JSON, nullable=True)
@@ -102,10 +101,10 @@ class DocumentUpload(TimestampMixin, UUIDMixin, Base):
 class AuditLog(TimestampMixin, UUIDMixin, Base):
     __tablename__ = "audit_logs"
 
-    application_id = Column(UUID(as_uuid=True), ForeignKey("applications.id"), nullable=True)
+    application_id = Column(Uuid, ForeignKey("applications.id"), nullable=True)
     actor = Column(String, nullable=True)
     entity_type = Column(String, nullable=False)
-    entity_id = Column(UUID(as_uuid=True), nullable=True)
+    entity_id = Column(Uuid, nullable=True)
     action = Column(String, nullable=False)
     payload = Column(JSON, nullable=True)
 
@@ -115,7 +114,7 @@ class AuditLog(TimestampMixin, UUIDMixin, Base):
 class MatchRun(TimestampMixin, UUIDMixin, Base):
     __tablename__ = "match_runs"
 
-    application_id = Column(UUID(as_uuid=True), ForeignKey("applications.id"), nullable=False)
+    application_id = Column(Uuid, ForeignKey("applications.id"), nullable=False)
     status = Column(String, nullable=False, default="running")
     check_results = Column(JSON, nullable=True)
 
@@ -126,8 +125,8 @@ class MatchRun(TimestampMixin, UUIDMixin, Base):
 class MatchResult(TimestampMixin, UUIDMixin, Base):
     __tablename__ = "match_results"
 
-    match_run_id = Column(UUID(as_uuid=True), ForeignKey("match_runs.id"), nullable=False)
-    lender_program_id = Column(UUID(as_uuid=True), ForeignKey("lender_programs.id"), nullable=False)
+    match_run_id = Column(Uuid, ForeignKey("match_runs.id"), nullable=False)
+    lender_program_id = Column(Uuid, ForeignKey("lender_programs.id", ondelete="SET NULL"), nullable=True)
     eligible = Column(Boolean, nullable=False, default=False)
     fit_score = Column(Integer, nullable=True)
     reasons = Column(String, nullable=True)

@@ -1,5 +1,4 @@
-from sqlalchemy import Column, DateTime, ForeignKey, String, Text, JSON
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, DateTime, ForeignKey, String, Text, JSON, Uuid
 from sqlalchemy.orm import relationship
 
 from app.db import Base
@@ -17,7 +16,7 @@ class Lender(TimestampMixin, UUIDMixin, Base):
 class LenderProgram(TimestampMixin, UUIDMixin, Base):
     __tablename__ = "lender_programs"
 
-    lender_id = Column(UUID(as_uuid=True), ForeignKey("lenders.id"), nullable=False)
+    lender_id = Column(Uuid, ForeignKey("lenders.id"), nullable=False)
     name = Column(String, nullable=False)
     description = Column(Text, nullable=True)
 
@@ -29,7 +28,7 @@ class LenderProgram(TimestampMixin, UUIDMixin, Base):
 class LenderCriteria(TimestampMixin, UUIDMixin, Base):
     __tablename__ = "lender_criteria"
 
-    program_id = Column(UUID(as_uuid=True), ForeignKey("lender_programs.id"), nullable=False)
+    program_id = Column(Uuid, ForeignKey("lender_programs.id"), nullable=False)
     field_key = Column(String, nullable=False)
     data_type = Column(String, nullable=False)  # int, decimal, string, bool
     operator = Column(String, nullable=False)  # range, in, not_in, contains, boolean
@@ -45,7 +44,7 @@ class LenderCriteria(TimestampMixin, UUIDMixin, Base):
 class PolicyVersion(TimestampMixin, UUIDMixin, Base):
     __tablename__ = "policy_versions"
 
-    lender_id = Column(UUID(as_uuid=True), ForeignKey("lenders.id"), nullable=False)
+    lender_id = Column(Uuid, ForeignKey("lenders.id"), nullable=False)
     version = Column(String, nullable=False)
     effective_at = Column(DateTime, nullable=False)
     notes = Column(Text, nullable=True)
