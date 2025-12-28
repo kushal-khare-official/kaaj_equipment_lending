@@ -117,6 +117,7 @@ class MatchRun(TimestampMixin, UUIDMixin, Base):
 
     application_id = Column(UUID(as_uuid=True), ForeignKey("applications.id"), nullable=False)
     status = Column(String, nullable=False, default="running")
+    check_results = Column(JSON, nullable=True)
 
     application = relationship("Application", back_populates="match_runs")
     results = relationship("MatchResult", back_populates="match_run", cascade="all, delete-orphan")

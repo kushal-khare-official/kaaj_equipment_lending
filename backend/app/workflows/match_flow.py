@@ -9,9 +9,9 @@ from app.services.matching import evaluate_application_against_program
 from app.services.feature_derivation import derive_application_features
 
 
-def run_match_workflow(app: Application, programs: List[LenderProgram]):
+def run_match_workflow(app: Application, programs: List[LenderProgram], check_results: Dict | None = None):
     features = derive_application_features(app)
-    run = MatchRun(application_id=app.id, status="completed")
+    run = MatchRun(application_id=app.id, status="completed", check_results=check_results or {})
     results: List[MatchResult] = []
     for program in programs:
         eligible, fit_score, reasons, per_rule = evaluate_application_against_program(app, program)

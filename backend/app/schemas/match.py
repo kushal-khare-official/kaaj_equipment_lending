@@ -8,6 +8,8 @@ from app.schemas.application import MatchResultOut
 
 class MatchRunOut(BaseModel):
     id: UUID
+    status: str
+    check_results: dict | None = None
     results: List[MatchResultOut]
 
     class Config:

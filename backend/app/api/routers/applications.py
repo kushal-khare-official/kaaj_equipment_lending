@@ -2,11 +2,19 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from uuid import UUID
 from app.models.application import Application, Guarantor, BusinessCredit, Equipment, LoanRequest
 from app.schemas.application import ApplicationCreate, ApplicationOut
 from app.shared.enums import ApplicationStatus
+from app.services.audit_logger import log_action
 
 router = APIRouter(prefix="/applications", tags=["applications"])
+
+
+@router.get("", response_model=list[ApplicationOut])
+def list_applications(db: Session = Depends(get_db)):
+    apps = db.query(Application).order_by(Application.created_at.desc()).limit(100).all()
+    return apps
 
 
 @router.post("", response_model=ApplicationOut)
@@ -24,12 +32,17 @@ def create_application(payload: ApplicationCreate, db: Session = Depends(get_db)
     db.add(app)
     db.commit()
     db.refresh(app)
+    log_action(db, actor=app.merchant_email, entity_type="application", entity_id=app.id, action="create_application", application_id=app.id, payload=payload.model_dump())
     return app
 
 
 @router.get("/{application_id}", response_model=ApplicationOut)
 def get_application(application_id: str, db: Session = Depends(get_db)):
-    app = db.query(Application).filter(Application.id == application_id).first()
+    try:
+        app_id = UUID(application_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid application_id")
+    app = db.query(Application).filter(Application.id == app_id).first()
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
     return app

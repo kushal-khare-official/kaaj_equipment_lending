@@ -31,3 +31,14 @@ def business_prefill():
 def bank_verification():
     return {"status": "success", "vendor": "mock-bank", "balance": 100000}
 
+
+@router.get("/status")
+def status():
+    return {
+        "credit": {"status": "ready"},
+        "kyc": {"status": "ready"},
+        "kyb": {"status": "ready"},
+        "business_prefill": {"status": "ready"},
+        "bank_verification": {"status": "ready"},
+    }
+

@@ -26,6 +26,11 @@ class LenderCreate(BaseModel):
     programs: List[LenderProgramIn] = []
 
 
+class LenderUpdate(BaseModel):
+    name: Optional[str] = None
+    programs: List[LenderProgramIn] = []
+
+
 class LenderCriteriaOut(LenderCriteriaIn):
     id: UUID
 

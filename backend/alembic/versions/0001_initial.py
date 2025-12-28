@@ -130,6 +130,7 @@ def upgrade():
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("application_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("status", sa.String(), nullable=False),
+        sa.Column("check_results", JSON(), nullable=True),
         sa.ForeignKeyConstraint(["application_id"], ["applications.id"]),
         sa.PrimaryKeyConstraint("id"),
     )
