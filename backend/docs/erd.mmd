@@ -1,0 +1,118 @@
+```mermaid
+erDiagram
+  Application ||--o{ Guarantor : has
+  Application ||--|| BusinessCredit : has
+  Application ||--o{ Equipment : has
+  Application ||--|| LoanRequest : has
+  Application ||--o{ DocumentRequest : requests
+  DocumentRequest ||--o{ DocumentUpload : includes
+  Application ||--o{ MatchRun : triggers
+  MatchRun ||--o{ MatchResult : produces
+  Lender ||--o{ LenderProgram : offers
+  LenderProgram ||--o{ LenderCriteria : defines
+  Lender ||--o{ PolicyVersion : versions
+  Application ||--o{ AuditLog : logs
+  User ||--o{ AuditLog : actsOn
+
+  Application {
+    UUID id
+    string status
+    string merchant_email
+    datetime created_at
+  }
+  Guarantor {
+    UUID id
+    UUID application_id
+    bool is_primary
+    int fico
+    bool cdl_flag
+  }
+  BusinessCredit {
+    UUID id
+    UUID application_id
+    int paynet_score
+    string tradelines
+  }
+  Equipment {
+    UUID id
+    UUID application_id
+    string type
+    int year
+    int mileage
+    bool titled
+    bool private_party
+  }
+  LoanRequest {
+    UUID id
+    UUID application_id
+    decimal amount
+    int term_months
+    decimal down_payment
+  }
+  Lender {
+    UUID id
+    string name
+  }
+  LenderProgram {
+    UUID id
+    UUID lender_id
+    string name
+  }
+  LenderCriteria {
+    UUID id
+    UUID program_id
+    string field_key
+    string data_type
+    string operator
+    string value_min
+    string value_max
+    string values
+    string pattern
+    string description
+  }
+  MatchRun {
+    UUID id
+    UUID application_id
+    string status
+  }
+  MatchResult {
+    UUID id
+    UUID match_run_id
+    UUID lender_program_id
+    bool eligible
+    int fit_score
+    string reasons
+    string criterion_results
+  }
+  PolicyVersion {
+    UUID id
+    UUID lender_id
+    string version
+    datetime effective_at
+  }
+  DocumentRequest {
+    UUID id
+    UUID application_id
+    string type
+    string status
+  }
+  DocumentUpload {
+    UUID id
+    UUID request_id
+    string url
+    string status
+  }
+  AuditLog {
+    UUID id
+    string actor
+    string entity_type
+    UUID entity_id
+    string action
+    string payload
+  }
+  User {
+    UUID id
+    string role
+  }
+```
+

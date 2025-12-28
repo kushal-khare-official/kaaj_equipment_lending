@@ -1,0 +1,16 @@
+```mermaid
+flowchart TD
+  A[Start] --> B[Validate + trigger parallel prefill checks]
+  B -->|credit pull| C1[Credit]
+  B -->|KYC/KYB| C2[KYC/KYB]
+  B -->|business prefill| C3[Biz Prefill]
+  C1 & C2 & C3 --> D[Derive features age/mileage, geo/industry]
+  D --> E[Parallel per-lender evaluation]
+  E --> F[Aggregate results, compute fit, set status]
+  F -->|Docs needed| G[Create DocumentRequests; status=Pending]
+  F -->|No docs| H[Set status=Approved/Declined]
+  G --> I[Await uploads → re-eval if needed]
+  H --> J[Results / Terms & eSign]
+  I --> J
+```
+
