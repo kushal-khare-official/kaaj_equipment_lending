@@ -3,18 +3,16 @@ from __future__ import annotations
 import os
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import pool
 from sqlalchemy import create_engine
 from alembic import context
 
 from app.config import settings
-from app.db import Base  # noqa: F401 - ensures models are imported for metadata
+from app.db import Base  # noqa: F401
+from app import models  # noqa: F401
 
-# this is the Alembic Config object, which provides
-# access to the values within the .ini file in use.
 config = context.config
 
-# Interpret the config file for Python logging.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 

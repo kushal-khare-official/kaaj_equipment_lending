@@ -1,0 +1,54 @@
+from sqlalchemy import Column, DateTime, ForeignKey, String, Text, JSON
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
+
+from app.db import Base
+from app.models.base import TimestampMixin, UUIDMixin
+
+
+class Lender(TimestampMixin, UUIDMixin, Base):
+    __tablename__ = "lenders"
+
+    name = Column(String, nullable=False, unique=True)
+    programs = relationship("LenderProgram", back_populates="lender", cascade="all, delete-orphan")
+    versions = relationship("PolicyVersion", back_populates="lender", cascade="all, delete-orphan")
+
+
+class LenderProgram(TimestampMixin, UUIDMixin, Base):
+    __tablename__ = "lender_programs"
+
+    lender_id = Column(UUID(as_uuid=True), ForeignKey("lenders.id"), nullable=False)
+    name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+
+    lender = relationship("Lender", back_populates="programs")
+    criteria = relationship("LenderCriteria", back_populates="program", cascade="all, delete-orphan")
+    match_results = relationship("MatchResult", backref="lender_program")
+
+
+class LenderCriteria(TimestampMixin, UUIDMixin, Base):
+    __tablename__ = "lender_criteria"
+
+    program_id = Column(UUID(as_uuid=True), ForeignKey("lender_programs.id"), nullable=False)
+    field_key = Column(String, nullable=False)
+    data_type = Column(String, nullable=False)  # int, decimal, string, bool
+    operator = Column(String, nullable=False)  # range, in, not_in, contains, boolean
+    value_min = Column(String, nullable=True)
+    value_max = Column(String, nullable=True)
+    values = Column(JSON, nullable=True)
+    pattern = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
+
+    program = relationship("LenderProgram", back_populates="criteria")
+
+
+class PolicyVersion(TimestampMixin, UUIDMixin, Base):
+    __tablename__ = "policy_versions"
+
+    lender_id = Column(UUID(as_uuid=True), ForeignKey("lenders.id"), nullable=False)
+    version = Column(String, nullable=False)
+    effective_at = Column(DateTime, nullable=False)
+    notes = Column(Text, nullable=True)
+
+    lender = relationship("Lender", back_populates="versions")
+
