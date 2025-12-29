@@ -12,7 +12,7 @@ from app.schemas.documents import (
 )
 from app.shared.enums import Role, DocumentStatus
 from app.services.audit_logger import log_action
-from app.schemas.documents import DocumentRequestOut
+from app.services.document_requests import get_document_metadata
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -73,10 +73,23 @@ def list_documents(application_id: str, db: Session = Depends(get_db)):
         app_id = UUID(application_id)
     except ValueError:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid application_id")
-    return (
+    
+    doc_requests = (
         db.query(DocumentRequest)
         .filter(DocumentRequest.application_id == app_id)
         .order_by(DocumentRequest.created_at.desc())
         .all()
     )
+    
+    # Enrich with metadata
+    results = []
+    for doc in doc_requests:
+        metadata = get_document_metadata(doc.type)
+        result = DocumentRequestOut.model_validate(doc)
+        result.display_name = metadata.get("display_name")
+        result.description = metadata.get("description")
+        result.category = metadata.get("category")
+        results.append(result)
+    
+    return results
 

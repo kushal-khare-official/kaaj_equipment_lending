@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
-from .api.routers import mock_vendors, applications, lenders, match, documents, audit, storage
+from .api.routers import mock_vendors, applications, lenders, match, documents, audit, storage, workflow
 
 app = FastAPI(title=settings.app_name, version="0.1.0")
 
@@ -22,6 +22,7 @@ app.include_router(match.router)
 app.include_router(documents.router)
 app.include_router(audit.router)
 app.include_router(storage.router)
+app.include_router(workflow.router)
 
 
 @app.get("/health", tags=["health"])

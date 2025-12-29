@@ -207,3 +207,162 @@ export async function kycCheck(ssn: string, firstName?: string, lastName?: strin
   return res.json()
 }
 
+// =============================================================================
+// Workflow API
+// =============================================================================
+
+export type WorkflowStep =
+  | "business_search"
+  | "business_details"
+  | "guarantor_info"
+  | "equipment_info"
+  | "loan_details"
+  | "documents"
+  | "review"
+  | "submitted"
+
+export type CheckResult = {
+  check_type: string
+  status: "pending" | "running" | "completed" | "failed" | "needs_review" | "skipped"
+  vendor?: string
+  verified?: boolean
+  score?: number
+  risk_level?: "low" | "medium" | "high" | "critical"
+  flags: string[]
+  error?: string
+  duration_ms?: number
+}
+
+export type WorkflowResult = {
+  match_run_id: string
+  step: string
+  status: string
+  checks: Record<string, CheckResult>
+  derived_features: Record<string, unknown>
+  risk_assessment?: {
+    overall_risk?: string
+    risk_flags: string[]
+  }
+  validation_errors: string[]
+  warnings: string[]
+  match_results_count: number
+}
+
+export type WorkflowHistoryItem = {
+  match_run_id: string
+  step?: string
+  status: string
+  created_at?: string
+  risk_level?: string
+  flags_count: number
+  match_results_count: number
+}
+
+export type StepInfo = {
+  step: string
+  checks: string[]
+  description: string
+}
+
+/**
+ * Trigger workflow at a specific step of the application form.
+ * This runs verification checks appropriate for that step.
+ */
+export async function triggerWorkflow(
+  applicationId: string,
+  step: WorkflowStep,
+  runInBackground = false
+): Promise<WorkflowResult> {
+  const res = await fetch(`${API_BASE}/workflow/${applicationId}/trigger`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ step, run_in_background: runInBackground }),
+  })
+  if (!res.ok) throw new Error("failed to trigger workflow")
+  return res.json()
+}
+
+/**
+ * Get the latest workflow result for an application.
+ */
+export async function getLatestWorkflowResult(applicationId: string): Promise<WorkflowResult> {
+  const res = await fetch(`${API_BASE}/workflow/${applicationId}/latest`)
+  if (!res.ok) throw new Error("failed to get workflow result")
+  return res.json()
+}
+
+/**
+ * Get workflow execution history for an application.
+ */
+export async function getWorkflowHistory(applicationId: string): Promise<{ history: WorkflowHistoryItem[] }> {
+  const res = await fetch(`${API_BASE}/workflow/${applicationId}/history`)
+  if (!res.ok) throw new Error("failed to get workflow history")
+  return res.json()
+}
+
+/**
+ * Get information about workflow steps and their checks.
+ */
+export async function getWorkflowSteps(): Promise<{ steps: StepInfo[] }> {
+  const res = await fetch(`${API_BASE}/workflow/steps`)
+  if (!res.ok) throw new Error("failed to get workflow steps")
+  return res.json()
+}
+
+/**
+ * Retry a specific failed check.
+ */
+export async function retryCheck(applicationId: string, checkType: string): Promise<CheckResult> {
+  const res = await fetch(`${API_BASE}/workflow/${applicationId}/retry/${checkType}`, {
+    method: "POST",
+  })
+  if (!res.ok) throw new Error("failed to retry check")
+  return res.json()
+}
+
+/**
+ * Get a specific workflow run result by match_run_id.
+ */
+export async function getWorkflowRun(applicationId: string, matchRunId: string): Promise<WorkflowResult> {
+  const res = await fetch(`${API_BASE}/workflow/${applicationId}/run/${matchRunId}`)
+  if (!res.ok) throw new Error("failed to get workflow run")
+  return res.json()
+}
+
+/**
+ * Review status for an application.
+ */
+export type ReviewStatus = {
+  application_id: string
+  review_status: "pending" | "auto_approved" | "pending_manual_review" | "manually_approved" | "manually_rejected"
+  requires_manual_review: boolean
+  reviewed_by?: string
+  reviewed_at?: string
+}
+
+/**
+ * Get the review status of an application.
+ */
+export async function getReviewStatus(applicationId: string): Promise<ReviewStatus> {
+  const res = await fetch(`${API_BASE}/workflow/${applicationId}/review-status`)
+  if (!res.ok) throw new Error("failed to get review status")
+  return res.json()
+}
+
+/**
+ * Perform manual review on an application.
+ */
+export async function manualReview(
+  applicationId: string,
+  action: "approve" | "reject",
+  reviewer = "underwriter"
+): Promise<ReviewStatus> {
+  const res = await fetch(`${API_BASE}/workflow/${applicationId}/review`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, reviewer }),
+  })
+  if (!res.ok) throw new Error("failed to perform manual review")
+  return res.json()
+}
+

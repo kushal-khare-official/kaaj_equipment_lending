@@ -31,6 +31,9 @@ class DocumentRequestOut(BaseModel):
     type: str
     status: DocumentStatus
     uploads: list[DocumentUploadOut] = []
+    display_name: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
 
     class Config:
         from_attributes = True

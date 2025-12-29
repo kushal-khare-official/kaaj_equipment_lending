@@ -11,7 +11,11 @@ import {
     kycCheck,
     latestMatch,
     updateApplication,
+    triggerWorkflow,
+    getReviewStatus,
+    listDocuments,
 } from '../api'
+import type { WorkflowResult, ReviewStatus } from '../api'
 
 type BusinessSearchResult = {
     id: string
@@ -790,20 +794,41 @@ function LoanDetailsStep({
     )
 }
 
-// Step 4: Documents
+// Step 4: Documents - Enhanced with lender matches and document requests
 function DocumentsStep({
     documents,
     onChange,
+    matchResults,
+    matchLoading,
+    documentRequests,
+    reviewStatus,
 }: {
     documents: { type: string; uploaded: boolean }[]
     onChange: (docs: { type: string; uploaded: boolean }[]) => void
+    matchResults: any[] | null
+    matchLoading: boolean
+    documentRequests: { type: string; status: string; display_name?: string; description?: string; category?: string }[]
+    reviewStatus: ReviewStatus | null
 }) {
-    const requiredDocs = [
-        { type: 'drivers_license', label: "Driver's License" },
-        { type: 'bank_statements', label: 'Bank Statements (3 months)' },
-        { type: 'tax_returns', label: 'Business Tax Returns' },
-        { type: 'equipment_invoice', label: 'Equipment Invoice/Bill of Sale' },
-    ]
+    // Use document requests from workflow as the primary source
+    // These are dynamically generated based on failed checks
+    const allRequiredDocs = documentRequests.map(req => ({
+        type: req.type,
+        label: req.display_name || req.type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+        description: req.description,
+        category: req.category,
+        isFromWorkflow: true,
+    }))
+
+    // If no documents are requested yet (e.g., all checks passed), show standard documents
+    if (allRequiredDocs.length === 0) {
+        allRequiredDocs.push(
+            { type: 'drivers_license', label: "Driver's License", description: "Valid government-issued driver's license", category: "identity", isFromWorkflow: false },
+            { type: 'bank_statements_3_months', label: 'Bank Statements (3 months)', description: "Last 3 months of complete business bank statements", category: "financial", isFromWorkflow: false },
+            { type: 'tax_returns_2_years', label: 'Business Tax Returns (2 years)', description: "Complete business tax returns for last 2 years", category: "financial", isFromWorkflow: false },
+            { type: 'equipment_invoice', label: 'Equipment Invoice', description: "Invoice or bill of sale for equipment", category: "equipment", isFromWorkflow: false },
+        )
+    }
 
     const toggleUpload = (docType: string) => {
         const existing = documents.find(d => d.type === docType)
@@ -814,42 +839,217 @@ function DocumentsStep({
         }
     }
 
+    const eligibleMatches = matchResults?.filter((r: any) => r.eligible) || []
+    const hasEligibleMatch = eligibleMatches.length > 0
+
+    const getReviewStatusBadge = () => {
+        if (!reviewStatus) return null
+        const status = reviewStatus.review_status
+        if (status === 'auto_approved') {
+            return (
+                <span className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-800">
+                    Auto-Approved
+                </span>
+            )
+        } else if (status === 'pending_manual_review') {
+            return (
+                <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-800">
+                    Pending Manual Review
+                </span>
+            )
+        } else if (status === 'manually_approved') {
+            return (
+                <span className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-800">
+                    Manually Approved
+                </span>
+            )
+        } else if (status === 'manually_rejected') {
+            return (
+                <span className="rounded-full bg-red-100 px-3 py-1 text-sm font-semibold text-red-800">
+                    Rejected
+                </span>
+            )
+        }
+        return null
+    }
+
     return (
         <div className="space-y-6">
-            <h2 className="text-xl font-semibold text-slate-900">Additional Documents</h2>
-            <p className="text-sm text-slate-600">
-                Upload the required documents to complete your application. Additional documents may be requested.
-            </p>
+            <div className="flex items-center justify-between">
+                <div>
+                    <h2 className="text-xl font-semibold text-slate-900">Documents & Review</h2>
+                    <p className="text-sm text-slate-600">
+                        Upload required documents. Lender matching results and review status are shown below.
+                    </p>
+                </div>
+                {getReviewStatusBadge()}
+            </div>
 
+            {/* Lender Match Results Preview */}
+            <div className="rounded-lg border border-slate-200 bg-white p-4">
+                <h3 className="text-sm font-semibold text-slate-800 mb-3">Lender Match Results</h3>
+                {matchLoading ? (
+                    <div className="flex items-center justify-center py-4">
+                        <svg className="h-5 w-5 animate-spin text-slate-500" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        <span className="ml-2 text-sm text-slate-500">Evaluating lender matches...</span>
+                    </div>
+                ) : matchResults && matchResults.length > 0 ? (
+                    <div className="space-y-2">
+                        {matchResults.slice(0, 3).map((r: any, idx: number) => (
+                            <div key={r.lender_program_id || idx} className={`rounded-md border p-3 ${r.eligible ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
+                                <div className="flex items-center justify-between">
+                                    <span className="font-medium text-slate-900 text-sm">
+                                        {r.lender_name || 'Lender'} - {r.program_name || 'Program'}
+                                    </span>
+                                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${r.eligible ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>
+                                        {r.eligible ? 'Eligible' : 'Not Eligible'}
+                                    </span>
+                                </div>
+                                {r.eligible && (
+                                    <div className="mt-1 flex gap-3 text-xs text-slate-600">
+                                        {r.fit_score !== undefined && <span>Fit: {r.fit_score}%</span>}
+                                        {r.assigned_term_months && <span>Term: {r.assigned_term_months}mo</span>}
+                                        {r.assigned_interest_rate && <span>Rate: {r.assigned_interest_rate}%</span>}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                        {matchResults.length > 3 && (
+                            <p className="text-xs text-slate-500">+{matchResults.length - 3} more lender programs evaluated</p>
+                        )}
+                    </div>
+                ) : (
+                    <p className="text-sm text-slate-500">Lender matches will be evaluated when you proceed to the next step.</p>
+                )}
+
+                {!matchLoading && hasEligibleMatch && (
+                    <div className="mt-3 space-y-2">
+                        <div className="rounded-md bg-emerald-50 p-3">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center">
+                                    <svg className="h-4 w-4 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                    </svg>
+                                    <span className="ml-2 text-sm font-medium text-emerald-800">
+                                        {eligibleMatches.length} eligible lender{eligibleMatches.length !== 1 ? 's' : ''} found!
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        {(() => {
+                            // Calculate best available terms
+                            const termsWithData = eligibleMatches.filter((r: any) => r.assigned_term_months && r.assigned_interest_rate)
+                            if (termsWithData.length > 0) {
+                                const bestTerm = Math.max(...termsWithData.map((r: any) => r.assigned_term_months))
+                                const bestRate = Math.min(...termsWithData.map((r: any) => r.assigned_interest_rate))
+                                return (
+                                    <div className="rounded-md bg-blue-50 border border-blue-200 p-3">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs font-medium text-blue-700">Best Available Terms:</span>
+                                            <div className="flex gap-3 text-sm font-semibold text-blue-900">
+                                                <span>{bestTerm} months</span>
+                                                <span>•</span>
+                                                <span>{bestRate}% APR</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )
+                            }
+                            return null
+                        })()}
+                    </div>
+                )}
+
+                {!matchLoading && matchResults && !hasEligibleMatch && (
+                    <div className="mt-3 rounded-md bg-amber-50 p-3">
+                        <div className="flex items-center">
+                            <svg className="h-4 w-4 text-amber-600" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                            </svg>
+                            <span className="ml-2 text-sm font-medium text-amber-800">
+                                No eligible lenders found. Additional documents may help.
+                            </span>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Document Request Context */}
+            {documentRequests.length > 0 && (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                    <div className="flex items-start gap-3">
+                        <svg className="h-5 w-5 text-blue-600 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                        </svg>
+                        <div className="flex-1">
+                            <h3 className="text-sm font-semibold text-blue-900 mb-1">Document Requirements</h3>
+                            <p className="text-xs text-blue-700">
+                                The following documents are required based on verification checks and your application profile.
+                                These documents help underwriters evaluate your application accurately.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Documents List */}
             <div className="space-y-3">
-                {requiredDocs.map((doc) => {
+                <h3 className="text-sm font-semibold text-slate-800">Required Documents</h3>
+                {allRequiredDocs.map((doc) => {
                     const uploaded = documents.find(d => d.type === doc.type)?.uploaded || false
+                    const isFromWorkflow = doc.isFromWorkflow
                     return (
                         <div
                             key={doc.type}
-                            className={`flex items-center justify-between rounded-lg border p-4 ${uploaded ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-white'
+                            className={`flex items-start justify-between rounded-lg border p-4 ${uploaded ? 'border-emerald-300 bg-emerald-50' :
+                                    isFromWorkflow ? 'border-amber-300 bg-amber-50' :
+                                        'border-slate-200 bg-white'
                                 }`}
                         >
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-start gap-3 flex-1">
                                 {uploaded ? (
-                                    <svg className="h-5 w-5 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
+                                    <svg className="h-5 w-5 text-emerald-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                                     </svg>
+                                ) : isFromWorkflow ? (
+                                    <svg className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                    </svg>
                                 ) : (
-                                    <svg className="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg className="h-5 w-5 text-slate-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                     </svg>
                                 )}
-                                <span className={`text-sm font-medium ${uploaded ? 'text-emerald-800' : 'text-slate-700'}`}>
-                                    {doc.label}
-                                </span>
+                                <div className="flex-1">
+                                    <div className="flex items-center gap-2">
+                                        <span className={`text-sm font-medium ${uploaded ? 'text-emerald-800' : isFromWorkflow ? 'text-amber-800' : 'text-slate-700'}`}>
+                                            {doc.label}
+                                        </span>
+                                        {doc.category && (
+                                            <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                                                {doc.category}
+                                            </span>
+                                        )}
+                                    </div>
+                                    {doc.description && (
+                                        <p className="text-xs text-slate-600 mt-1">{doc.description}</p>
+                                    )}
+                                    {isFromWorkflow && !uploaded && (
+                                        <p className="text-xs text-amber-600 mt-1 font-medium">Required based on verification checks</p>
+                                    )}
+                                </div>
                             </div>
                             <button
                                 type="button"
                                 onClick={() => toggleUpload(doc.type)}
-                                className={`rounded-md px-3 py-1.5 text-sm font-medium ${uploaded
+                                className={`ml-3 rounded-md px-3 py-1.5 text-sm font-medium flex-shrink-0 ${uploaded
                                     ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                    : isFromWorkflow
+                                        ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                                     }`}
                             >
                                 {uploaded ? 'Uploaded' : 'Upload'}
@@ -859,12 +1059,12 @@ function DocumentsStep({
                 })}
             </div>
 
-            <div className="rounded-md bg-amber-50 p-4">
+            <div className="rounded-md bg-slate-50 p-4">
                 <div className="flex">
-                    <svg className="h-5 w-5 text-amber-600" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    <svg className="h-5 w-5 text-slate-500" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                     </svg>
-                    <p className="ml-3 text-sm text-amber-700">
+                    <p className="ml-3 text-sm text-slate-600">
                         Note: In this demo, clicking "Upload" simulates a successful upload. In production, this would open a file picker.
                     </p>
                 </div>
@@ -1137,12 +1337,45 @@ export function BorrowerPage() {
     const [matchStatus, setMatchStatus] = useState<any | null>(null)
     const [matchLoading, setMatchLoading] = useState(false)
     const [businessSearchResults, setBusinessSearchResults] = useState<BusinessSearchResult[]>([])
+    const [workflowResult, setWorkflowResult] = useState<WorkflowResult | null>(null)
+    const [workflowLoading, setWorkflowLoading] = useState(false)
+    const [documentRequests, setDocumentRequests] = useState<{ type: string; status: string; display_name?: string; description?: string; category?: string }[]>([])
+    const [reviewStatus, setReviewStatus] = useState<ReviewStatus | null>(null)
 
     useEffect(() => {
         health()
             .then(() => setApiStatus('API reachable'))
             .catch(() => setApiStatus('API not reachable'))
     }, [])
+
+    // Trigger matching when resuming at step 5
+    useEffect(() => {
+        if (currentStep === 5 && applicationId && !matchStatus?.results && !matchLoading && !initialLoading) {
+            // We resumed at step 5 with an existing application, need to fetch match results
+            const fetchMatchResults = async () => {
+                setMatchLoading(true)
+                try {
+                    const matchRes = await latestMatch(applicationId)
+                    setMatchStatus(matchRes)
+                } catch (e: any) {
+                    console.error('Failed to fetch match results:', e)
+                    // Try to trigger a new match run
+                    try {
+                        const { rerunMatch } = await import('../api')
+                        await rerunMatch(applicationId)
+                        const matchRes = await latestMatch(applicationId)
+                        setMatchStatus(matchRes)
+                    } catch (rerunErr) {
+                        console.error('Failed to rerun match:', rerunErr)
+                        setError('Failed to load match results')
+                    }
+                } finally {
+                    setMatchLoading(false)
+                }
+            }
+            fetchMatchResults()
+        }
+    }, [currentStep, applicationId, matchStatus, matchLoading, initialLoading])
 
     // Load existing application data from URL parameter
     useEffect(() => {
@@ -1181,10 +1414,10 @@ export function BorrowerPage() {
                     }
                 }
 
-                // Restore current step if saved
-                if (app.current_step && app.current_step > 1) {
-                    setCurrentStep(app.current_step)
-                }
+                // Restore current step if saved and set application ID
+                const savedStep = app.current_step && app.current_step > 1 ? app.current_step : 1
+                setCurrentStep(savedStep)
+                setApplicationId(app.id)
 
                 // Prefill form data from existing application + prefill API data
                 setFormData(prev => ({
@@ -1198,19 +1431,25 @@ export function BorrowerPage() {
                         tin: prefillData?.tin || '',
                         paynet_score: kybData?.paynet_score || app.business_credit?.paynet_score,
                     },
-                    guarantors: prefillData?.guarantors?.map((g: any, idx: number) => ({
-                        first_name: g.first_name || '',
-                        last_name: g.last_name || '',
-                        title: g.title || '',
-                        ownership_pct: g.ownership_pct || 0,
-                        address: g.address || { ...emptyAddress },
-                        phone: g.phone || '',
-                        email: g.email || '',
-                        ssn: '',
-                        fico: undefined,
-                        kyc_verified: undefined,
-                        is_primary: idx === 0,
-                    })) || app.guarantors?.map((g: any, idx: number) => ({
+                    guarantors: prefillData?.guarantors?.map((g: any, idx: number) => {
+                        // Find matching saved guarantor by name to restore SSN and other saved data
+                        const savedGuarantor = app.guarantors?.find((sg: any) =>
+                            sg.first_name === g.first_name && sg.last_name === g.last_name
+                        )
+                        return {
+                            first_name: g.first_name || '',
+                            last_name: g.last_name || '',
+                            title: g.title || '',
+                            ownership_pct: g.ownership_pct || 0,
+                            address: g.address || { ...emptyAddress },
+                            phone: g.phone || '',
+                            email: g.email || '',
+                            ssn: savedGuarantor?.ssn || '',
+                            fico: savedGuarantor?.fico || undefined,
+                            kyc_verified: undefined,
+                            is_primary: savedGuarantor?.is_primary ?? idx === 0,
+                        }
+                    }) || app.guarantors?.map((g: any, idx: number) => ({
                         first_name: g.first_name || '',
                         last_name: g.last_name || '',
                         title: '',
@@ -1218,7 +1457,7 @@ export function BorrowerPage() {
                         address: { ...emptyAddress },
                         phone: '',
                         email: '',
-                        ssn: '',
+                        ssn: g.ssn || '',
                         fico: g.fico,
                         kyc_verified: undefined,
                         is_primary: g.is_primary || idx === 0,
@@ -1232,8 +1471,8 @@ export function BorrowerPage() {
                         equipment: app.equipment?.length > 0
                             ? app.equipment.map((eq: any) => ({
                                 type: eq.type || '',
-                                make: '',
-                                model: '',
+                                make: eq.make || '',
+                                model: eq.model || '',
                                 year: eq.year?.toString() || '',
                                 mileage: eq.mileage?.toString() || '',
                                 titled: eq.titled || false,
@@ -1308,6 +1547,60 @@ export function BorrowerPage() {
             console.error('Prefill error:', e)
         } finally {
             setPrefillLoading(false)
+        }
+    }
+
+    // Map form steps to workflow steps
+    const getWorkflowStep = (formStep: number): string => {
+        const stepMap: Record<number, string> = {
+            1: 'business_details',
+            2: 'guarantor_info',
+            3: 'loan_details',
+            4: 'documents',
+            5: 'review',
+            6: 'submitted',
+        }
+        return stepMap[formStep] || 'business_details'
+    }
+
+    // Run workflow for current step
+    const runWorkflowForStep = async (step: number) => {
+        if (!applicationId) return
+
+        setWorkflowLoading(true)
+        try {
+            const workflowStep = getWorkflowStep(step)
+            const result = await triggerWorkflow(applicationId, workflowStep as any)
+            setWorkflowResult(result)
+
+            // Show warnings if any
+            if (result.warnings && result.warnings.length > 0) {
+                console.log('Workflow warnings:', result.warnings)
+            }
+
+            // Check for validation errors
+            if (result.validation_errors && result.validation_errors.length > 0) {
+                setError(`Validation issues: ${result.validation_errors.join(', ')}`)
+            }
+
+            // Fetch document requests and review status after workflow
+            try {
+                const [docsRes, reviewRes] = await Promise.all([
+                    listDocuments(applicationId),
+                    getReviewStatus(applicationId),
+                ])
+                setDocumentRequests(docsRes || [])
+                setReviewStatus(reviewRes)
+            } catch (e) {
+                console.error('Failed to fetch documents/review status:', e)
+            }
+
+            return result
+        } catch (e: any) {
+            console.error('Workflow error:', e)
+            // Don't block form progression on workflow errors
+        } finally {
+            setWorkflowLoading(false)
         }
     }
 
@@ -1398,6 +1691,14 @@ export function BorrowerPage() {
             case 3:
                 return formData.loan.amount && formData.loan.loan_type
             case 4:
+                // Block Step 5 until review is complete (auto or manual)
+                // If pending_manual_review, user must wait for underwriter
+                if (reviewStatus?.review_status === 'pending_manual_review') {
+                    return false // Cannot proceed until manually reviewed
+                }
+                if (reviewStatus?.review_status === 'manually_rejected') {
+                    return false // Application was rejected
+                }
                 return true
             case 5:
                 // If not eligible, they can't proceed (no button shown anyway)
@@ -1428,6 +1729,7 @@ export function BorrowerPage() {
                     is_primary: g.is_primary,
                     first_name: g.first_name,
                     last_name: g.last_name,
+                    ssn: g.ssn,
                     fico: g.fico,
                 }))
                 updateData.business_credit = {
@@ -1441,6 +1743,8 @@ export function BorrowerPage() {
                 }
                 updateData.equipment = formData.loan.equipment.map(e => ({
                     type: e.type,
+                    make: e.make,
+                    model: e.model,
                     year: e.year ? parseInt(e.year) : null,
                     mileage: e.mileage ? parseInt(e.mileage) : null,
                     titled: e.titled,
@@ -1456,18 +1760,42 @@ export function BorrowerPage() {
     }
 
     const handleNext = async () => {
-        if (currentStep === 4) {
-            // Moving to step 5, trigger matching
+        if (currentStep === 3) {
+            // Moving to Step 4, trigger matching early so results show in Documents step
+            await saveApplicationProgress(4)
+            setCurrentStep(4)
+            await triggerMatching()
+            // Run workflow for loan_details step (current step 3)
+            if (applicationId) {
+                await runWorkflowForStep(3)
+            }
+            // Run workflow for documents step which will run the review workflow
+            if (applicationId) {
+                await runWorkflowForStep(4)
+            }
+        } else if (currentStep === 4) {
+            // Moving to step 5, run review workflow
             await saveApplicationProgress(5)
             setCurrentStep(5)
-            await triggerMatching()
+            // Run workflow for review step
+            if (applicationId) {
+                await runWorkflowForStep(5)
+            }
         } else if (currentStep === 5 && hasEligibleMatch) {
             // Moving to success step
             await saveApplicationProgress(6)
             setCurrentStep(6)
+            // Run final workflow
+            if (applicationId) {
+                await runWorkflowForStep(6)
+            }
         } else if (currentStep < 5) {
             await saveApplicationProgress(currentStep + 1)
             setCurrentStep(currentStep + 1)
+            // Run workflow for the step we're leaving
+            if (applicationId) {
+                await runWorkflowForStep(currentStep)
+            }
         }
     }
 
@@ -1506,6 +1834,66 @@ export function BorrowerPage() {
 
                 <Stepper currentStep={currentStep} steps={STEPS} />
 
+                {/* Workflow Status Indicator */}
+                {workflowLoading && (
+                    <div className="mb-4 flex items-center gap-2 rounded-md bg-blue-50 px-4 py-2 text-sm text-blue-700">
+                        <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Running verification checks...
+                    </div>
+                )}
+
+                {workflowResult && !workflowLoading && (
+                    <div className={`mb-4 rounded-md px-4 py-2 text-sm ${workflowResult.status === 'completed' ? 'bg-emerald-50 text-emerald-700' :
+                            workflowResult.status === 'partial' ? 'bg-amber-50 text-amber-700' :
+                                workflowResult.status === 'failed' ? 'bg-red-50 text-red-700' :
+                                    'bg-slate-50 text-slate-700'
+                        }`}>
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                {workflowResult.status === 'completed' && (
+                                    <svg className="h-4 w-4 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                                    </svg>
+                                )}
+                                {workflowResult.status === 'partial' && (
+                                    <svg className="h-4 w-4 text-amber-600" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                    </svg>
+                                )}
+                                <span>
+                                    Verification: {workflowResult.status === 'completed' ? 'All checks passed' :
+                                        workflowResult.status === 'partial' ? 'Some checks need attention' :
+                                            workflowResult.status === 'failed' ? 'Verification failed' : 'Pending'}
+                                </span>
+                            </div>
+                            {workflowResult.risk_assessment?.overall_risk && (
+                                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${workflowResult.risk_assessment.overall_risk === 'low' ? 'bg-emerald-100 text-emerald-800' :
+                                        workflowResult.risk_assessment.overall_risk === 'medium' ? 'bg-amber-100 text-amber-800' :
+                                            workflowResult.risk_assessment.overall_risk === 'high' ? 'bg-orange-100 text-orange-800' :
+                                                'bg-red-100 text-red-800'
+                                    }`}>
+                                    Risk: {workflowResult.risk_assessment.overall_risk}
+                                </span>
+                            )}
+                        </div>
+                        {workflowResult.warnings && workflowResult.warnings.length > 0 && (
+                            <div className="mt-2 text-xs">
+                                {workflowResult.warnings.slice(0, 2).map((w, i) => (
+                                    <div key={i} className="flex items-center gap-1">
+                                        <span>•</span> {w}
+                                    </div>
+                                ))}
+                                {workflowResult.warnings.length > 2 && (
+                                    <div className="text-slate-500">...and {workflowResult.warnings.length - 2} more</div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 {error && (
                     <div className="mb-6 rounded-md bg-red-50 p-4 text-sm text-red-700">{error}</div>
                 )}
@@ -1539,6 +1927,10 @@ export function BorrowerPage() {
                         <DocumentsStep
                             documents={formData.documents}
                             onChange={(documents) => setFormData(prev => ({ ...prev, documents }))}
+                            matchResults={matchStatus?.results || null}
+                            matchLoading={matchLoading}
+                            documentRequests={documentRequests}
+                            reviewStatus={reviewStatus}
                         />
                     )}
                     {currentStep === 5 && (
@@ -1573,17 +1965,26 @@ export function BorrowerPage() {
                         </button>
                         <div className="flex items-center gap-3">
                             <span className="text-sm text-slate-500">Step {currentStep} of {STEPS.length}</span>
-                            {/* Show button based on step and eligibility */}
+                            {/* Show button based on step, eligibility, and review status */}
                             {currentStep === 5 && !matchLoading && !hasEligibleMatch ? (
                                 <span className="text-sm text-slate-500">Unable to proceed - no eligible lenders</span>
+                            ) : currentStep === 4 && reviewStatus?.review_status === 'pending_manual_review' ? (
+                                <div className="flex items-center gap-2">
+                                    <svg className="h-4 w-4 animate-pulse text-amber-500" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+                                    </svg>
+                                    <span className="text-sm text-amber-700">Awaiting manual review by underwriter...</span>
+                                </div>
+                            ) : currentStep === 4 && reviewStatus?.review_status === 'manually_rejected' ? (
+                                <span className="text-sm text-red-600">Application rejected. Please contact support.</span>
                             ) : (
                                 <button
                                     type="button"
                                     onClick={handleNext}
-                                    disabled={!canProceed() || matchLoading}
+                                    disabled={!canProceed() || matchLoading || workflowLoading}
                                     className="rounded-md bg-slate-900 px-6 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
                                 >
-                                    {matchLoading ? 'Evaluating...' : currentStep === 5 ? 'Sign & Submit' : 'Continue'}
+                                    {matchLoading || workflowLoading ? 'Processing...' : currentStep === 5 ? 'Sign & Submit' : 'Continue'}
                                 </button>
                             )}
                         </div>

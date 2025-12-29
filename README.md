@@ -450,6 +450,128 @@ The rule engine supports these operators for lender criteria:
 
 ---
 
+---
+
+## Test Data for Mock APIs
+
+The mock vendor APIs support test scenarios through specific patterns in input data. Use these test values to demonstrate pass/fail scenarios across all workflow steps.
+
+### Credit Check (Personal Credit / FICO Score)
+
+Test SSN patterns trigger different credit scenarios:
+
+| SSN Pattern | Scenario | FICO Score | Status | Use Case |
+|------------|----------|------------|--------|----------|
+| `111-11-1111` | Excellent credit | 785 | ✅ Pass | Prime borrower, best rates |
+| `222-22-2222` | Good credit | 725 | ✅ Pass | Standard approval |
+| `333-33-3333` | Fair credit | 670 | ⚠️ Pass with conditions | Near-prime, higher rates |
+| `444-44-4444` | Poor credit | 620 | ❌ Likely decline | Subprime territory |
+| `555-55-5555` | Bad credit | 540 | ❌ Decline | Bankruptcy history |
+| `666-66-6666` | No credit history | N/A | ❌ Fail | Cannot evaluate |
+| `777-77-7777` | High utilization | 680 | ⚠️ Review | 95% credit utilization |
+| `888-88-8888` | Recent delinquencies | 650 | ⚠️ Review | Recent late payments |
+| `999-99-9999` | API failure | N/A | ❌ Error | Service unavailable |
+| Default | Good credit | 720 | ✅ Pass | Standard scenario |
+
+### KYC Check (Identity Verification)
+
+Test SSN patterns trigger different KYC scenarios:
+
+| SSN Pattern | Scenario | Verified | Status | Use Case |
+|------------|----------|----------|--------|----------|
+| `111-11-1111` | Verified | ✅ Yes | ✅ Pass | Clean identity |
+| `222-22-2222` | Verified | ✅ Yes | ✅ Pass | Standard verification |
+| `333-33-3333` | Address mismatch | ❌ No | ⚠️ Review | Address verification failed |
+| `444-44-4444` | Identity failed | ❌ No | ❌ Fail | Cannot verify identity |
+| `555-55-5555` | Watchlist hit | ❌ No | ⚠️ Review | OFAC sanctions list match |
+| `666-66-6666` | High fraud score | ❌ No | ⚠️ Review | Fraud score 75/100 |
+| `999-99-9999` | API failure | N/A | ❌ Error | Service unavailable |
+| Default | Verified | ✅ Yes | ✅ Pass | Clean verification |
+
+### KYB Check (Business Verification & PayNet Score)
+
+Test business name keywords trigger different KYB scenarios:
+
+| Business Name Contains | Scenario | PayNet Score | Status | Use Case |
+|------------------------|----------|--------------|--------|----------|
+| `EXCELLENT` | Excellent credit | 865 | ✅ Pass | 12+ years, A+ rating |
+| `GOOD` | Good credit | 775 | ✅ Pass | 7 years, A rating |
+| `FAIR` | Fair credit | 670 | ⚠️ Pass | 4 years, B rating |
+| `POOR` | Poor credit | 580 | ⚠️ Review | Delinquent accounts |
+| `STARTUP` | New business | N/A | ⚠️ Review | < 2 years, no credit history |
+| `INACTIVE` | Inactive business | N/A | ❌ Fail | Business not active |
+| `UNVERIFIED` | TIN failed | N/A | ❌ Fail | Cannot verify TIN |
+| `FAIL` | API failure | N/A | ❌ Error | Service unavailable |
+| Default | Good business | 785 | ✅ Pass | 5 years, active |
+
+### Bank Statement Analysis
+
+Test document URL keywords trigger different analysis scenarios:
+
+| URL Contains | Scenario | Cash Flow Grade | Status | Use Case |
+|-------------|----------|-----------------|--------|----------|
+| `excellent` | Strong cash flow | A+ | ✅ Pass | $250K avg balance, $5.4M revenue |
+| `good` | Good cash flow | A | ✅ Pass | $125K avg balance, $2.6M revenue |
+| `fair` | Acceptable cash flow | B | ⚠️ Pass | $45K avg balance, 1 overdraft |
+| `poor` | Weak cash flow | C | ⚠️ Review | $15K avg balance, negative days |
+| `nsf` | Multiple NSF fees | D | ⚠️ Review | 7 NSF fees, 12 overdrafts |
+| `mismatch` | Name mismatch | N/A | ⚠️ Review | Account name doesn't match |
+| `tampered` | Tampering detected | N/A | ❌ Fail | Document fraud indicators |
+| Default | Good cash flow | A | ✅ Pass | $75K avg balance, $1.5M revenue |
+
+### Sample Test Scenarios
+
+#### Scenario 1: Perfect Application (All Pass)
+```
+Business Name: EXCELLENT TRUCKING INC
+Guarantor SSN: 111-11-1111
+Bank Statement URL: https://example.com/statements/excellent_2024.pdf
+Expected Result: All checks pass, auto-approved, lowest rates
+```
+
+#### Scenario 2: Marginal Application (Needs Review)
+```
+Business Name: FAIR LOGISTICS LLC
+Guarantor SSN: 333-33-3333
+Bank Statement URL: https://example.com/statements/fair_2024.pdf
+Expected Result: Manual review required, document requests triggered
+```
+
+#### Scenario 3: High-Risk Application (Likely Decline)
+```
+Business Name: POOR TRANSPORT CO
+Guarantor SSN: 555-55-5555
+Bank Statement URL: https://example.com/statements/nsf_2024.pdf
+Expected Result: Multiple red flags, manual review, likely rejection
+```
+
+#### Scenario 4: Startup Application (Special Handling)
+```
+Business Name: STARTUP DELIVERY STARTUP
+Guarantor SSN: 222-22-2222
+Bank Statement URL: https://example.com/statements/good_2024.pdf
+Expected Result: No business credit history, relies on personal credit
+```
+
+#### Scenario 5: Mixed Signals (Complex Review)
+```
+Business Name: GOOD HAULING INC
+Guarantor SSN: 777-77-7777 (high utilization)
+Bank Statement URL: https://example.com/statements/fair_2024.pdf
+Expected Result: Good business, concerning personal credit, manual review
+```
+
+### Testing Workflow Steps
+
+1. **Step 1-2 (Business Details)**: Use business name patterns to control KYB results
+2. **Step 3 (Guarantor Info)**: Use SSN patterns to control credit check and KYC results
+3. **Step 4 (Equipment Info)**: No checks run (feature derivation only)
+4. **Step 5 (Loan Details)**: Bank verification runs (always passes in mock)
+5. **Step 6 (Documents)**: Use URL patterns to control bank statement analysis
+6. **Step 7 (Review)**: Final lender matching based on accumulated results
+
+---
+
 ## License
 
 Proprietary - All rights reserved.

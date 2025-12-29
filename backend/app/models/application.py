@@ -6,7 +6,7 @@ from sqlalchemy.orm import relationship
 
 from app.db import Base
 from app.models.base import TimestampMixin, UUIDMixin
-from app.shared.enums import ApplicationStatus, DocumentStatus
+from app.shared.enums import ApplicationStatus, DocumentStatus, ReviewStatus
 
 
 class Application(TimestampMixin, UUIDMixin, Base):
@@ -17,6 +17,23 @@ class Application(TimestampMixin, UUIDMixin, Base):
     business_name = Column(String, nullable=True)
     loan_type = Column(String, nullable=True)
     current_step = Column(Integer, nullable=True, default=1)  # Track which step the user is on
+
+    # Workflow state fields
+    workflow_step = Column(String, nullable=True)  # Current ApplicationStep value
+    workflow_status = Column(String, nullable=True)  # Current WorkflowStatus value
+    risk_level = Column(String, nullable=True)  # Overall RiskLevel from checks
+    risk_flags = Column(JSON, nullable=True)  # List of risk flags from checks
+
+    # Review status fields
+    # Use values_callable to store the enum's string value (e.g., "pending") not the name (e.g., "PENDING")
+    review_status = Column(
+        Enum(ReviewStatus, name="review_status", values_callable=lambda x: [e.value for e in x]),
+        nullable=True,
+        default=ReviewStatus.PENDING
+    )
+    requires_manual_review = Column(Boolean, nullable=True, default=False)  # True if document fallback triggered
+    reviewed_by = Column(String, nullable=True)  # Actor who performed manual review
+    reviewed_at = Column(DateTime, nullable=True)  # Timestamp of manual review
 
     guarantors = relationship("Guarantor", back_populates="application", cascade="all, delete-orphan")
     business_credit = relationship("BusinessCredit", back_populates="application", uselist=False, cascade="all, delete-orphan")
@@ -34,6 +51,7 @@ class Guarantor(TimestampMixin, UUIDMixin, Base):
     is_primary = Column(Boolean, default=True, nullable=False)
     first_name = Column(String, nullable=True)
     last_name = Column(String, nullable=True)
+    ssn = Column(String, nullable=True)  # Store encrypted/masked SSN
     fico = Column(Integer, nullable=True)
     cdl_flag = Column(Boolean, default=False, nullable=False)
     homeownership = Column(Boolean, default=False, nullable=True)
@@ -58,6 +76,8 @@ class Equipment(TimestampMixin, UUIDMixin, Base):
 
     application_id = Column(Uuid, ForeignKey("applications.id"), nullable=False)
     type = Column(String, nullable=True)
+    make = Column(String, nullable=True)
+    model = Column(String, nullable=True)
     year = Column(Integer, nullable=True)
     mileage = Column(Integer, nullable=True)
     titled = Column(Boolean, default=False, nullable=False)

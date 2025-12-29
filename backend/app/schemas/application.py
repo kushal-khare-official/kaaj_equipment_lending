@@ -10,6 +10,7 @@ class GuarantorIn(BaseModel):
     is_primary: bool = True
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    ssn: Optional[str] = None
     fico: Optional[int] = None
     cdl_flag: bool = False
     homeownership: Optional[bool] = None
@@ -22,6 +23,8 @@ class BusinessCreditIn(BaseModel):
 
 class EquipmentIn(BaseModel):
     type: Optional[str] = None
+    make: Optional[str] = None
+    model: Optional[str] = None
     year: Optional[int] = None
     mileage: Optional[int] = None
     titled: bool = False
@@ -132,6 +135,7 @@ class GuarantorOut(BaseModel):
     is_primary: bool
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    ssn: Optional[str] = None
     fico: Optional[int] = None
 
     class Config:
@@ -149,6 +153,8 @@ class BusinessCreditOut(BaseModel):
 class EquipmentOut(BaseModel):
     id: UUID
     type: Optional[str] = None
+    make: Optional[str] = None
+    model: Optional[str] = None
     year: Optional[int] = None
     mileage: Optional[int] = None
     titled: bool = False

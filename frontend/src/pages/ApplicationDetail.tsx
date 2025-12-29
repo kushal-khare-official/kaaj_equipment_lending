@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getApplication, latestMatch } from '../api'
+import { getApplication, latestMatch, getWorkflowHistory, getLatestWorkflowResult, retryCheck, getWorkflowRun } from '../api'
+import type { WorkflowResult, WorkflowHistoryItem } from '../api'
 
 type TabId = 'overview' | 'application' | 'kyb' | 'fraud' | 'bank' | 'financial' | 'tax' | 'credit' | 'workflow'
 
@@ -906,56 +907,397 @@ function CreditReportTab({ application }: { application: Application }) {
     )
 }
 
-// Workflow Tab
-function WorkflowTab({ application: _application }: { application: Application }) {
-    const workflowSteps = [
-        { name: 'Application Submitted', status: 'completed', date: 'Dec 29, 2024 10:30 AM' },
-        { name: 'KYB Verification', status: 'completed', date: 'Dec 29, 2024 10:31 AM' },
-        { name: 'Credit Check', status: 'completed', date: 'Dec 29, 2024 10:31 AM' },
-        { name: 'Document Review', status: 'in_progress', date: null },
-        { name: 'Underwriting', status: 'pending', date: null },
-        { name: 'Final Decision', status: 'pending', date: null },
-    ]
+// Workflow Tab - Enhanced with real data
+function WorkflowTab({ application }: { application: Application }) {
+    const [workflowHistory, setWorkflowHistory] = useState<WorkflowHistoryItem[]>([])
+    const [selectedResult, setSelectedResult] = useState<WorkflowResult | null>(null)
+    const [loading, setLoading] = useState(true)
+    const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
+    const [retryingCheck, setRetryingCheck] = useState<string | null>(null)
+    const [loadingStep, setLoadingStep] = useState(false)
+
+    useEffect(() => {
+        const loadWorkflowData = async () => {
+            setLoading(true)
+            try {
+                const [historyData, latestData] = await Promise.all([
+                    getWorkflowHistory(application.id).catch(() => ({ history: [] })),
+                    getLatestWorkflowResult(application.id).catch(() => null),
+                ])
+                setWorkflowHistory(historyData.history || [])
+                setSelectedResult(latestData)
+                // Set the latest run as selected by default
+                if (historyData.history && historyData.history.length > 0) {
+                    setSelectedRunId(historyData.history[0].match_run_id)
+                }
+            } catch (e) {
+                console.error('Failed to load workflow data:', e)
+            } finally {
+                setLoading(false)
+            }
+        }
+        loadWorkflowData()
+    }, [application.id])
+
+    const handleSelectRun = async (matchRunId: string) => {
+        if (matchRunId === selectedRunId) return
+
+        setLoadingStep(true)
+        setSelectedRunId(matchRunId)
+        try {
+            const runResult = await getWorkflowRun(application.id, matchRunId)
+            setSelectedResult(runResult)
+        } catch (e) {
+            console.error('Failed to load workflow run:', e)
+        } finally {
+            setLoadingStep(false)
+        }
+    }
+
+    const handleRetryCheck = async (checkType: string) => {
+        setRetryingCheck(checkType)
+        try {
+            await retryCheck(application.id, checkType)
+            // Reload workflow data
+            const latestData = await getLatestWorkflowResult(application.id).catch(() => null)
+            setSelectedResult(latestData)
+        } catch (e) {
+            console.error('Failed to retry check:', e)
+        } finally {
+            setRetryingCheck(null)
+        }
+    }
+
+    const formatDate = (dateStr?: string) => {
+        if (!dateStr) return '—'
+        return new Date(dateStr).toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+        })
+    }
+
+    const getStepDisplayName = (step: string) => {
+        const names: Record<string, string> = {
+            business_search: 'Business Search',
+            business_details: 'Business Verification',
+            guarantor_info: 'Guarantor Verification',
+            equipment_info: 'Equipment Details',
+            loan_details: 'Loan & Bank Verification',
+            documents: 'Document Analysis',
+            review: 'Lender Matching',
+            submitted: 'Application Submitted',
+        }
+        return names[step] || step
+    }
+
+    const getCheckDisplayName = (checkType: string) => {
+        const names: Record<string, string> = {
+            kyc: 'KYC - Identity Verification',
+            kyb: 'KYB - Business Verification',
+            credit_check: 'Personal Credit Check (FICO)',
+            business_credit: 'Business Credit (PayNet)',
+            bank_verification: 'Bank Account Verification',
+            bank_statement: 'Bank Statement Analysis',
+            online_presence: 'Online Presence Check',
+            ucc_search: 'UCC Lien Search',
+            document_analysis: 'Document Analysis',
+        }
+        return names[checkType] || checkType
+    }
+
+    const getStatusBadge = (status: string) => {
+        const styles: Record<string, string> = {
+            completed: 'bg-emerald-100 text-emerald-700',
+            running: 'bg-blue-100 text-blue-700',
+            pending: 'bg-slate-100 text-slate-600',
+            failed: 'bg-red-100 text-red-700',
+            needs_review: 'bg-amber-100 text-amber-700',
+            partial: 'bg-amber-100 text-amber-700',
+            skipped: 'bg-slate-100 text-slate-500',
+        }
+        return styles[status] || 'bg-slate-100 text-slate-600'
+    }
+
+    const getRiskBadge = (risk?: string) => {
+        const styles: Record<string, string> = {
+            low: 'bg-emerald-100 text-emerald-700',
+            medium: 'bg-amber-100 text-amber-700',
+            high: 'bg-orange-100 text-orange-700',
+            critical: 'bg-red-100 text-red-700',
+        }
+        return styles[risk || ''] || 'bg-slate-100 text-slate-600'
+    }
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center p-12">
+                <svg className="h-6 w-6 animate-spin text-slate-400" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                <span className="ml-2 text-slate-600">Loading workflow data...</span>
+            </div>
+        )
+    }
 
     return (
         <div className="p-6">
-            <div className="mb-6">
-                <h3 className="text-lg font-semibold text-slate-900">Application Workflow</h3>
-                <p className="mt-1 text-sm text-slate-600">Track the progress of this application</p>
+            <div className="mb-6 flex items-center justify-between">
+                <div>
+                    <h3 className="text-lg font-semibold text-slate-900">Application Workflow</h3>
+                    <p className="mt-1 text-sm text-slate-600">
+                        Track verification checks and workflow progress
+                    </p>
+                </div>
+                {selectedResult?.risk_assessment?.overall_risk && (
+                    <div className="text-right">
+                        <div className="text-xs text-slate-500">Overall Risk</div>
+                        <span className={`mt-1 inline-block rounded-full px-3 py-1 text-sm font-medium ${getRiskBadge(selectedResult.risk_assessment.overall_risk)}`}>
+                            {selectedResult.risk_assessment.overall_risk.toUpperCase()}
+                        </span>
+                    </div>
+                )}
             </div>
 
-            <div className="space-y-4">
-                {workflowSteps.map((step, idx) => (
-                    <div key={step.name} className="flex items-start gap-4">
-                        <div className="flex flex-col items-center">
-                            {step.status === 'completed' ? (
-                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100">
-                                    <svg className="h-4 w-4 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                    </svg>
-                                </div>
-                            ) : step.status === 'in_progress' ? (
-                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100">
-                                    <div className="h-3 w-3 animate-pulse rounded-full bg-blue-500"></div>
-                                </div>
-                            ) : (
-                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100">
-                                    <div className="h-2 w-2 rounded-full bg-slate-400"></div>
-                                </div>
-                            )}
-                            {idx < workflowSteps.length - 1 && (
-                                <div className={`h-8 w-0.5 ${step.status === 'completed' ? 'bg-emerald-200' : 'bg-slate-200'}`}></div>
-                            )}
+            <div className="grid gap-6 lg:grid-cols-2">
+                {/* Left: Workflow History Timeline */}
+                <div>
+                    <h4 className="mb-4 text-sm font-semibold uppercase text-slate-500">Workflow History</h4>
+                    {workflowHistory.length === 0 ? (
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-center">
+                            <p className="text-sm text-slate-500">No workflow runs yet</p>
                         </div>
-                        <div className="flex-1 pb-4">
-                            <div className="font-medium text-slate-900">{step.name}</div>
-                            {step.date && <div className="text-sm text-slate-500">{step.date}</div>}
-                            {step.status === 'in_progress' && (
-                                <div className="mt-1 text-sm text-blue-600">In Progress</div>
-                            )}
+                    ) : (
+                        <div className="space-y-3">
+                            {workflowHistory.map((item, idx) => (
+                                <div
+                                    key={item.match_run_id}
+                                    className={`cursor-pointer rounded-lg border p-4 transition-colors ${
+                                        selectedRunId === item.match_run_id
+                                            ? 'border-indigo-300 bg-indigo-50'
+                                            : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                                    }`}
+                                    onClick={() => handleSelectRun(item.match_run_id)}
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`flex h-8 w-8 items-center justify-center rounded-full ${
+                                                item.status === 'completed' ? 'bg-emerald-100' :
+                                                item.status === 'partial' ? 'bg-amber-100' :
+                                                item.status === 'failed' ? 'bg-red-100' :
+                                                'bg-slate-100'
+                                            }`}>
+                                                {item.status === 'completed' ? (
+                                                    <svg className="h-4 w-4 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
+                                                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                                    </svg>
+                                                ) : item.status === 'partial' ? (
+                                                    <svg className="h-4 w-4 text-amber-600" fill="currentColor" viewBox="0 0 20 20">
+                                                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                                    </svg>
+                                                ) : item.status === 'failed' ? (
+                                                    <svg className="h-4 w-4 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                                                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                                    </svg>
+                                                ) : (
+                                                    <span className="text-xs font-semibold text-slate-500">{idx + 1}</span>
+                                                )}
+                                            </div>
+                                            <div>
+                                                <div className="font-medium text-slate-900">
+                                                    {getStepDisplayName(item.step || 'unknown')}
+                                                </div>
+                                                <div className="text-xs text-slate-500">
+                                                    {formatDate(item.created_at)}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            {item.risk_level && (
+                                                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getRiskBadge(item.risk_level)}`}>
+                                                    {item.risk_level}
+                                                </span>
+                                            )}
+                                            {item.flags_count > 0 && (
+                                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                                                    {item.flags_count} flags
+                                                </span>
+                                            )}
+                                            {item.match_results_count > 0 && (
+                                                <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                                                    {item.match_results_count} matches
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
-                    </div>
-                ))}
+                    )}
+                </div>
+
+                {/* Right: Check Results for Selected Step */}
+                <div>
+                    <h4 className="mb-4 text-sm font-semibold uppercase text-slate-500">
+                        Check Results
+                        {selectedResult?.step && selectedResult.step !== 'unknown' && (
+                            <span className="ml-2 text-xs font-normal normal-case text-slate-400">
+                                ({getStepDisplayName(selectedResult.step)})
+                            </span>
+                        )}
+                    </h4>
+                    {loadingStep ? (
+                        <div className="flex items-center justify-center p-8">
+                            <svg className="h-5 w-5 animate-spin text-slate-400" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                            </svg>
+                            <span className="ml-2 text-sm text-slate-500">Loading check results...</span>
+                        </div>
+                    ) : !selectedResult || Object.keys(selectedResult.checks || {}).length === 0 ? (
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-center">
+                            <p className="text-sm text-slate-500">No check results available</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {Object.entries(selectedResult.checks).map(([checkType, result]) => (
+                                <div key={checkType} className="rounded-lg border border-slate-200 p-4">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`flex h-8 w-8 items-center justify-center rounded-full ${
+                                                result.status === 'completed' ? 'bg-emerald-100' :
+                                                result.status === 'needs_review' ? 'bg-amber-100' :
+                                                result.status === 'failed' ? 'bg-red-100' :
+                                                'bg-slate-100'
+                                            }`}>
+                                                {result.status === 'completed' ? (
+                                                    <svg className="h-4 w-4 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
+                                                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                                    </svg>
+                                                ) : result.status === 'needs_review' ? (
+                                                    <svg className="h-4 w-4 text-amber-600" fill="currentColor" viewBox="0 0 20 20">
+                                                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                                    </svg>
+                                                ) : result.status === 'failed' ? (
+                                                    <svg className="h-4 w-4 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                                                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                                    </svg>
+                                                ) : (
+                                                    <svg className="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                    </svg>
+                                                )}
+                                            </div>
+                                            <div>
+                                                <div className="font-medium text-slate-900">
+                                                    {getCheckDisplayName(result.check_type)}
+                                                </div>
+                                                <div className="flex items-center gap-2 text-xs text-slate-500">
+                                                    <span className={`rounded px-1.5 py-0.5 ${getStatusBadge(result.status)}`}>
+                                                        {result.status}
+                                                    </span>
+                                                    {result.vendor && <span>via {result.vendor}</span>}
+                                                    {result.duration_ms && <span>{result.duration_ms}ms</span>}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            {result.score !== undefined && result.score !== null && (
+                                                <div className="text-right">
+                                                    <div className="text-lg font-semibold text-slate-900">{result.score}</div>
+                                                    <div className="text-xs text-slate-500">Score</div>
+                                                </div>
+                                            )}
+                                            {result.risk_level && (
+                                                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getRiskBadge(result.risk_level)}`}>
+                                                    {result.risk_level}
+                                                </span>
+                                            )}
+                                            {result.status === 'failed' && (
+                                                <button
+                                                    className="rounded bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+                                                    onClick={() => handleRetryCheck(result.check_type)}
+                                                    disabled={retryingCheck === result.check_type}
+                                                >
+                                                    {retryingCheck === result.check_type ? 'Retrying...' : 'Retry'}
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Flags */}
+                                    {result.flags && result.flags.length > 0 && (
+                                        <div className="mt-3 flex flex-wrap gap-1">
+                                            {result.flags.map((flag, i) => (
+                                                <span key={i} className="rounded bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
+                                                    {flag.replace(/_/g, ' ')}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* Error */}
+                                    {result.error && (
+                                        <div className="mt-2 rounded bg-red-50 px-2 py-1 text-xs text-red-600">
+                                            {result.error}
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Warnings */}
+                    {selectedResult?.warnings && selectedResult.warnings.length > 0 && (
+                        <div className="mt-4">
+                            <h4 className="mb-2 text-sm font-semibold text-slate-700">Warnings</h4>
+                            <div className="space-y-2">
+                                {selectedResult.warnings.map((warning, i) => (
+                                    <div key={i} className="flex items-start gap-2 rounded bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                                        <svg className="mt-0.5 h-4 w-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                        </svg>
+                                        {warning}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Risk Flags */}
+                    {selectedResult?.risk_assessment?.risk_flags && selectedResult.risk_assessment.risk_flags.length > 0 && (
+                        <div className="mt-4">
+                            <h4 className="mb-2 text-sm font-semibold text-slate-700">Risk Flags</h4>
+                            <div className="flex flex-wrap gap-2">
+                                {selectedResult.risk_assessment.risk_flags.map((flag, i) => (
+                                    <span key={i} className="rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-red-700">
+                                        {flag.replace(/_/g, ' ')}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Derived Features */}
+                    {selectedResult?.derived_features && Object.keys(selectedResult.derived_features).length > 0 && (
+                        <div className="mt-4">
+                            <h4 className="mb-2 text-sm font-semibold text-slate-700">Derived Features</h4>
+                            <div className="grid grid-cols-2 gap-2">
+                                {Object.entries(selectedResult.derived_features).slice(0, 8).map(([key, value]) => (
+                                    <div key={key} className="rounded bg-slate-50 px-3 py-2">
+                                        <div className="text-xs text-slate-500">{key.replace(/\./g, ' → ')}</div>
+                                        <div className="font-medium text-slate-900">
+                                            {typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value ?? '—')}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     )
