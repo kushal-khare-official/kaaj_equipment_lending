@@ -17,3 +17,7 @@ body {
 #root {
   min-height: 100vh;
 }
+
+.w-75 {
+  width: 75%;
+}

@@ -5,7 +5,7 @@ from typing import Dict, List
 
 from app.models.application import Application, MatchRun, MatchResult
 from app.models.lender import LenderProgram
-from app.services.matching import evaluate_application_against_program
+from app.services.matching import evaluate_application_against_program, calculate_assigned_term, calculate_interest_rate
 from app.services.feature_derivation import derive_application_features
 
 
@@ -31,6 +31,13 @@ def run_match_workflow(app: Application, programs: List[LenderProgram], check_re
         # Get lender name from the program's relationship
         lender_name = program.lender.name if program.lender else None
 
+        # Calculate assigned term and interest rate if eligible
+        assigned_term = None
+        assigned_interest_rate = None
+        if eligible:
+            assigned_term = calculate_assigned_term(program, app)
+            assigned_interest_rate = calculate_interest_rate(program, app, fit_score)
+
         result = MatchResult(
             lender_program_id=program.id,
             eligible=eligible,
@@ -40,6 +47,8 @@ def run_match_workflow(app: Application, programs: List[LenderProgram], check_re
                 "lender_name": lender_name,
                 "program_name": program.name,
                 "criteria": per_rule,
+                "assigned_term_months": assigned_term,
+                "assigned_interest_rate": assigned_interest_rate,
             },
         )
         results.append(result)

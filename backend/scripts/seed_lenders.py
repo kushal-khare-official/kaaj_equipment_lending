@@ -8,7 +8,18 @@ from app.db import SessionLocal
 
 def seed_example(session: Session):
     lender = Lender(name="Sample Lender")
-    program = LenderProgram(name="Standard", description="Sample program", lender=lender)
+    program = LenderProgram(
+        name="Standard",
+        description="Sample program",
+        lender=lender,
+        term_min=12,
+        term_max=84,
+        term_default=60,
+        term_used_equipment=48,
+        interest_rate_min=6.5,
+        interest_rate_max=12.5,
+        interest_rate_default=8.5,
+    )
     program.criteria = [
         LenderCriteria(
             field_key="guarantor.fico",

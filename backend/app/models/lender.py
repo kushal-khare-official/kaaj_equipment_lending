@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, ForeignKey, String, Text, JSON, Uuid
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, Numeric, String, Text, JSON, Uuid
 from sqlalchemy.orm import relationship
 
 from app.db import Base
@@ -19,6 +19,15 @@ class LenderProgram(TimestampMixin, UUIDMixin, Base):
     lender_id = Column(Uuid, ForeignKey("lenders.id"), nullable=False)
     name = Column(String, nullable=False)
     description = Column(Text, nullable=True)
+    # Term configuration (in months)
+    term_min = Column(Integer, nullable=True)  # Minimum term offered
+    term_max = Column(Integer, nullable=True)  # Maximum term offered
+    term_default = Column(Integer, nullable=True)  # Default term for new equipment
+    term_used_equipment = Column(Integer, nullable=True)  # Term for used/older equipment
+    # Interest rate configuration (as percentage, e.g., 8.5 = 8.5%)
+    interest_rate_min = Column(Numeric(5, 2), nullable=True)  # Minimum interest rate
+    interest_rate_max = Column(Numeric(5, 2), nullable=True)  # Maximum interest rate
+    interest_rate_default = Column(Numeric(5, 2), nullable=True)  # Default interest rate
 
     lender = relationship("Lender", back_populates="programs")
     criteria = relationship("LenderCriteria", back_populates="program", cascade="all, delete-orphan")

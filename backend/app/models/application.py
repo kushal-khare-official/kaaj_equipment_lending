@@ -14,6 +14,9 @@ class Application(TimestampMixin, UUIDMixin, Base):
 
     status = Column(Enum(ApplicationStatus, name="application_status"), nullable=False, default=ApplicationStatus.PROCESSING)
     merchant_email = Column(String, nullable=False)
+    business_name = Column(String, nullable=True)
+    loan_type = Column(String, nullable=True)
+    current_step = Column(Integer, nullable=True, default=1)  # Track which step the user is on
 
     guarantors = relationship("Guarantor", back_populates="application", cascade="all, delete-orphan")
     business_credit = relationship("BusinessCredit", back_populates="application", uselist=False, cascade="all, delete-orphan")

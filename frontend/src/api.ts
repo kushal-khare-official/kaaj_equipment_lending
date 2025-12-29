@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8100"
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000"
 
 export async function health() {
   const res = await fetch(`${API_BASE}/health`)
@@ -19,6 +19,22 @@ export async function createApplication(body: unknown) {
     body: JSON.stringify(body),
   })
   if (!res.ok) throw new Error("failed to create application")
+  return res.json()
+}
+
+export async function getApplication(applicationId: string) {
+  const res = await fetch(`${API_BASE}/applications/${applicationId}`)
+  if (!res.ok) throw new Error("failed to load application")
+  return res.json()
+}
+
+export async function updateApplication(applicationId: string, data: Record<string, unknown>) {
+  const res = await fetch(`${API_BASE}/applications/${applicationId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error("failed to update application")
   return res.json()
 }
 
@@ -137,6 +153,57 @@ export async function updateLender(lenderId: string, payload: Partial<LenderCrea
     body: JSON.stringify(payload),
   })
   if (!res.ok) throw new Error("failed to update lender")
+  return res.json()
+}
+
+// Mock Vendor APIs
+export async function businessSearch(businessName: string) {
+  const res = await fetch(`${API_BASE}/mock/business-search`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ business_name: businessName }),
+  })
+  if (!res.ok) throw new Error("failed to search businesses")
+  return res.json()
+}
+
+export async function businessPrefill(businessId: string) {
+  const res = await fetch(`${API_BASE}/mock/business-prefill`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ business_id: businessId }),
+  })
+  if (!res.ok) throw new Error("failed to fetch business prefill")
+  return res.json()
+}
+
+export async function kybCheck(businessName: string, tin?: string) {
+  const res = await fetch(`${API_BASE}/mock/kyb`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ business_name: businessName, tin }),
+  })
+  if (!res.ok) throw new Error("failed to run KYB check")
+  return res.json()
+}
+
+export async function creditCheck(ssn: string, firstName?: string, lastName?: string) {
+  const res = await fetch(`${API_BASE}/mock/credit-check`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ssn, first_name: firstName, last_name: lastName }),
+  })
+  if (!res.ok) throw new Error("failed to run credit check")
+  return res.json()
+}
+
+export async function kycCheck(ssn: string, firstName?: string, lastName?: string, address?: string) {
+  const res = await fetch(`${API_BASE}/mock/kyc`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ssn, first_name: firstName, last_name: lastName, address }),
+  })
+  if (!res.ok) throw new Error("failed to run KYC check")
   return res.json()
 }
 

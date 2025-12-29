@@ -18,6 +18,13 @@ class LenderCriteriaIn(BaseModel):
 class LenderProgramIn(BaseModel):
     name: str
     description: Optional[str] = None
+    term_min: Optional[int] = None
+    term_max: Optional[int] = None
+    term_default: Optional[int] = None
+    term_used_equipment: Optional[int] = None
+    interest_rate_min: Optional[float] = None
+    interest_rate_max: Optional[float] = None
+    interest_rate_default: Optional[float] = None
     criteria: List[LenderCriteriaIn] = []
 
 
@@ -42,6 +49,13 @@ class LenderProgramOut(BaseModel):
     id: UUID
     name: str
     description: Optional[str] = None
+    term_min: Optional[int] = None
+    term_max: Optional[int] = None
+    term_default: Optional[int] = None
+    term_used_equipment: Optional[int] = None
+    interest_rate_min: Optional[float] = None
+    interest_rate_max: Optional[float] = None
+    interest_rate_default: Optional[float] = None
     criteria: List[LenderCriteriaOut] = []
 
     class Config:

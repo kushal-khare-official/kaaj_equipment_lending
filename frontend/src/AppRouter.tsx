@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom'
 import { BorrowerPage } from './pages/Borrower'
+import { IntakeFormPage } from './pages/IntakeForm'
 import { ApplicationsPage } from './pages/Applications'
+import { ApplicationDetailPage } from './pages/ApplicationDetail'
 import { UnderwriterPage } from './pages/Underwriter'
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -49,8 +51,10 @@ export function AppRouter() {
         <BrowserRouter>
             <Shell>
                 <Routes>
-                    <Route path="/apply" element={<BorrowerPage />} />
+                    <Route path="/apply" element={<IntakeFormPage />} />
+                    <Route path="/apply/:applicationId" element={<BorrowerPage />} />
                     <Route path="/applications" element={<ApplicationsPage />} />
+                    <Route path="/applications/:applicationId" element={<ApplicationDetailPage />} />
                     <Route path="/uw" element={<UnderwriterPage />} />
                     <Route path="*" element={<Navigate to="/apply" replace />} />
                 </Routes>

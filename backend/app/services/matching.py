@@ -1,4 +1,5 @@
-from typing import Any, Dict, List, Tuple
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.models.application import Application, MatchResult, MatchRun
 from app.models.lender import LenderProgram, LenderCriteria
@@ -83,9 +84,83 @@ def evaluate_application_against_program(
     return eligible, fit_score, reasons, enriched_results
 
 
-def get_program_match_summary(program: LenderProgram, eligible: bool, fit_score: int) -> Dict[str, Any]:
+def calculate_assigned_term(program: LenderProgram, app: Application) -> Optional[int]:
+    """
+    Calculate the assigned loan term based on the program configuration and equipment.
+
+    Logic:
+    - If equipment is older (year < current_year - 5) or has high mileage (> 100k), use term_used_equipment
+    - Otherwise use term_default
+    - Clamp result between term_min and term_max
+    """
+    if not program.term_default:
+        return None
+
+    current_year = datetime.now().year
+    is_used_equipment = False
+
+    # Check if equipment qualifies as "used"
+    if app.equipment:
+        for eq in app.equipment:
+            # Equipment older than 5 years
+            if eq.year and eq.year < (current_year - 5):
+                is_used_equipment = True
+                break
+            # High mileage (over 100k)
+            if eq.mileage and eq.mileage > 100000:
+                is_used_equipment = True
+                break
+
+    # Determine base term
+    if is_used_equipment and program.term_used_equipment:
+        base_term = program.term_used_equipment
+    else:
+        base_term = program.term_default
+
+    # Clamp to min/max
+    if program.term_min and base_term < program.term_min:
+        base_term = program.term_min
+    if program.term_max and base_term > program.term_max:
+        base_term = program.term_max
+
+    return base_term
+
+
+def calculate_interest_rate(program: LenderProgram, app: Application, fit_score: int) -> Optional[float]:
+    """
+    Calculate the assigned interest rate based on the program configuration and fit score.
+
+    Logic:
+    - Base rate is the default rate
+    - Higher fit scores get rates closer to minimum
+    - Lower fit scores get rates closer to maximum
+    """
+    if not program.interest_rate_default:
+        return None
+
+    default_rate = float(program.interest_rate_default)
+    min_rate = float(program.interest_rate_min) if program.interest_rate_min else default_rate
+    max_rate = float(program.interest_rate_max) if program.interest_rate_max else default_rate
+
+    # Calculate rate based on fit score (0-100)
+    # Higher fit score = lower rate (better for borrower)
+    if fit_score >= 90:
+        return min_rate
+    elif fit_score >= 80:
+        # Interpolate between min and default
+        ratio = (fit_score - 80) / 10
+        return round(default_rate - (default_rate - min_rate) * ratio, 2)
+    elif fit_score >= 70:
+        return default_rate
+    else:
+        # Interpolate between default and max
+        ratio = max(0, (70 - fit_score)) / 70
+        return round(min(max_rate, default_rate + (max_rate - default_rate) * ratio), 2)
+
+
+def get_program_match_summary(program: LenderProgram, eligible: bool, fit_score: int, app: Application = None) -> Dict[str, Any]:
     """Get a summary of the match result for a program."""
-    return {
+    summary = {
         "program_id": str(program.id),
         "program_name": program.name,
         "lender_id": str(program.lender_id),
@@ -93,3 +168,11 @@ def get_program_match_summary(program: LenderProgram, eligible: bool, fit_score:
         "eligible": eligible,
         "fit_score": fit_score,
     }
+
+    # If eligible, calculate and include the assigned term
+    if eligible and app:
+        assigned_term = calculate_assigned_term(program, app)
+        if assigned_term:
+            summary["assigned_term_months"] = assigned_term
+
+    return summary
