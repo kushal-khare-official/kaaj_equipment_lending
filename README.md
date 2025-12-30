@@ -2,6 +2,14 @@
 
 A lender matching platform for equipment finance that evaluates loan applications against multiple lender credit boxes. The system collects borrower/application data, normalizes lender policies into rules, and returns eligibility matches with transparent reasoning.
 
+## 🚀 Live Demo
+
+**Production App:** [https://kaaj-equipment-lending.vercel.app](https://kaaj-equipment-lending.vercel.app)
+
+**Demo Video:** [Watch on Google Drive](https://drive.google.com/file/d/1I19PeOapKlM3OW6SQWp1B_zuQ4hK3Of7/view?usp=sharing)
+
+---
+
 ## Table of Contents
 
 - [Architecture Overview](#architecture-overview)
