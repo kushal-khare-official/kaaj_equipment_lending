@@ -1,7 +1,19 @@
+from datetime import date, datetime
 from typing import Any, List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, field_validator, model_validator
+
+
+def convert_date_to_str(v: Any) -> Optional[str]:
+    """Convert date or datetime to ISO format string."""
+    if v is None:
+        return None
+    if isinstance(v, datetime):
+        return v.isoformat()
+    if isinstance(v, date):
+        return v.isoformat()
+    return v
 
 from app.shared.enums import ApplicationStatus, DocumentStatus
 
@@ -11,6 +23,13 @@ class GuarantorIn(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     ssn: Optional[str] = None
+    dob: Optional[str] = None  # Date of birth (YYYY-MM-DD)
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    address_street: Optional[str] = None
+    address_city: Optional[str] = None
+    address_state: Optional[str] = None
+    address_zip: Optional[str] = None
     fico: Optional[int] = None
     cdl_flag: bool = False
     homeownership: Optional[bool] = None
@@ -47,6 +66,14 @@ class ApplicationCreate(BaseModel):
     # Optional fields for intake form prefill
     business_name: Optional[str] = None
     loan_type: Optional[str] = None
+    # Business info fields
+    business_tin: Optional[str] = None
+    business_phone: Optional[str] = None
+    business_address_street: Optional[str] = None
+    business_address_city: Optional[str] = None
+    business_address_state: Optional[str] = None
+    business_address_zip: Optional[str] = None
+    incorporation_date: Optional[str] = None  # YYYY-MM-DD format
 
 
 class ApplicationUpdate(BaseModel):
@@ -59,6 +86,14 @@ class ApplicationUpdate(BaseModel):
     equipment: Optional[List[EquipmentIn]] = None
     loan_request: Optional[LoanRequestIn] = None
     current_step: Optional[int] = None  # Track which step the user is on
+    # Business info fields
+    business_tin: Optional[str] = None
+    business_phone: Optional[str] = None
+    business_address_street: Optional[str] = None
+    business_address_city: Optional[str] = None
+    business_address_state: Optional[str] = None
+    business_address_zip: Optional[str] = None
+    incorporation_date: Optional[str] = None  # YYYY-MM-DD format
 
 
 class DocumentRequestOut(BaseModel):
@@ -136,10 +171,22 @@ class GuarantorOut(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     ssn: Optional[str] = None
+    dob: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    address_street: Optional[str] = None
+    address_city: Optional[str] = None
+    address_state: Optional[str] = None
+    address_zip: Optional[str] = None
     fico: Optional[int] = None
 
     class Config:
         from_attributes = True
+
+    @field_validator("dob", mode="before")
+    @classmethod
+    def convert_dob(cls, v: Any) -> Optional[str]:
+        return convert_date_to_str(v)
 
 
 class BusinessCreditOut(BaseModel):
@@ -208,6 +255,24 @@ class ApplicationDetailOut(BaseModel):
     business_name: Optional[str] = None
     loan_type: Optional[str] = None
     current_step: Optional[int] = None
+    # Business info fields
+    business_tin: Optional[str] = None
+    business_phone: Optional[str] = None
+    business_address_street: Optional[str] = None
+    business_address_city: Optional[str] = None
+    business_address_state: Optional[str] = None
+    business_address_zip: Optional[str] = None
+    incorporation_date: Optional[str] = None
+    # Review status fields
+    review_status: Optional[str] = None
+    requires_manual_review: Optional[bool] = None
+    reviewed_by: Optional[str] = None
+    reviewed_at: Optional[str] = None
+    # Assigned lender program
+    assigned_lender_program_id: Optional[UUID] = None
+    assigned_term_months: Optional[int] = None
+    assigned_interest_rate: Optional[float] = None
+    # Related entities
     guarantors: List[GuarantorOut] = []
     business_credit: Optional[BusinessCreditOut] = None
     equipment: List[EquipmentOut] = []
@@ -216,4 +281,10 @@ class ApplicationDetailOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+    @field_validator("reviewed_at", "incorporation_date", mode="before")
+    @classmethod
+    def convert_dates(cls, v: Any) -> Optional[str]:
+        """Convert date/datetime to ISO format string during validation."""
+        return convert_date_to_str(v)
 

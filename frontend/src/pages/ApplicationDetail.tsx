@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getApplication, latestMatch, getWorkflowHistory, getLatestWorkflowResult, retryCheck, getWorkflowRun } from '../api'
-import type { WorkflowResult, WorkflowHistoryItem } from '../api'
+import { getApplication, latestMatch, getWorkflowHistory, getLatestWorkflowResult, retryCheck, getWorkflowRun, manualReview, rerunWorkflow, manualMatch, listLenders, getReviewStatus } from '../api'
+import type { WorkflowResult, WorkflowHistoryItem, ReviewStatus } from '../api'
 
 type TabId = 'overview' | 'application' | 'kyb' | 'fraud' | 'bank' | 'financial' | 'tax' | 'credit' | 'workflow'
 
@@ -22,6 +22,10 @@ type Application = {
     merchant_email: string
     business_name?: string
     loan_type?: string
+    review_status?: string
+    requires_manual_review?: boolean
+    reviewed_by?: string
+    reviewed_at?: string
     guarantors?: Array<{
         id: string
         is_primary: boolean
@@ -59,6 +63,12 @@ type MatchResult = {
     assigned_interest_rate?: number
 }
 
+type LenderProgram = {
+    id: string
+    name: string
+    lender_name: string
+}
+
 export function ApplicationDetailPage() {
     const { applicationId } = useParams<{ applicationId: string }>()
     const navigate = useNavigate()
@@ -67,30 +77,78 @@ export function ApplicationDetailPage() {
     const [matchResults, setMatchResults] = useState<MatchResult[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
+    const [reviewStatus, setReviewStatus] = useState<ReviewStatus | null>(null)
+    const [actionLoading, setActionLoading] = useState<string | null>(null)
+    const [lenderPrograms, setLenderPrograms] = useState<LenderProgram[]>([])
+    const [showManualMatchModal, setShowManualMatchModal] = useState(false)
+
+    const loadData = async () => {
+        if (!applicationId) return
+        setLoading(true)
+        try {
+            const [appData, matchData, reviewData, lendersData] = await Promise.all([
+                getApplication(applicationId),
+                latestMatch(applicationId).catch(() => null),
+                getReviewStatus(applicationId).catch(() => null),
+                listLenders().catch(() => []),
+            ])
+            setApplication(appData)
+            if (matchData?.results) {
+                setMatchResults(matchData.results)
+            }
+            if (reviewData) {
+                setReviewStatus(reviewData)
+            }
+            // Extract programs from lenders
+            const programs: LenderProgram[] = []
+            lendersData.forEach((lender: any) => {
+                lender.programs?.forEach((program: any) => {
+                    programs.push({
+                        id: program.id,
+                        name: program.name,
+                        lender_name: lender.name,
+                    })
+                })
+            })
+            setLenderPrograms(programs)
+        } catch (e: any) {
+            setError(e.message || 'Failed to load application')
+        } finally {
+            setLoading(false)
+        }
+    }
 
     useEffect(() => {
-        if (!applicationId) return
-
-        const loadData = async () => {
-            setLoading(true)
-            try {
-                const [appData, matchData] = await Promise.all([
-                    getApplication(applicationId),
-                    latestMatch(applicationId).catch(() => null),
-                ])
-                setApplication(appData)
-                if (matchData?.results) {
-                    setMatchResults(matchData.results)
-                }
-            } catch (e: any) {
-                setError(e.message || 'Failed to load application')
-            } finally {
-                setLoading(false)
-            }
-        }
-
         loadData()
     }, [applicationId])
+
+    const handleReject = async () => {
+        if (!applicationId) return
+        setActionLoading('reject')
+        try {
+            const result = await manualReview(applicationId, 'reject')
+            setReviewStatus(result)
+            await loadData()
+        } catch (e: any) {
+            setError(e.message || 'Failed to reject application')
+        } finally {
+            setActionLoading(null)
+        }
+    }
+
+    const handleManualMatch = async (programId: string) => {
+        if (!applicationId) return
+        setActionLoading('manual-match')
+        try {
+            await manualMatch(applicationId, programId)
+            setShowManualMatchModal(false)
+            await loadData()
+        } catch (e: any) {
+            setError(e.message || 'Failed to match application')
+        } finally {
+            setActionLoading(null)
+        }
+    }
 
     const formatDate = (dateStr?: string) => {
         if (!dateStr) return '—'
@@ -146,20 +204,43 @@ export function ApplicationDetailPage() {
                     </div>
                     <h1 className="mt-2 text-2xl font-bold">{application.business_name || 'Application'}</h1>
                     <div className="mt-4 flex items-center gap-4">
-                        <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${
-                            eligibleMatches.length > 0
-                                ? 'bg-emerald-500/20 text-emerald-100'
-                                : 'bg-amber-500/20 text-amber-100'
-                        }`}>
+                        <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium ${eligibleMatches.length > 0
+                            ? 'bg-emerald-500/20 text-emerald-100'
+                            : 'bg-amber-500/20 text-amber-100'
+                            }`}>
                             {criteriaCount} Criteria met
                         </span>
                         <div className="flex gap-2">
-                            <button className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600">
-                                Approve
-                            </button>
-                            <button className="rounded-md bg-white/10 px-4 py-2 text-sm font-medium text-white hover:bg-white/20">
-                                Reject
-                            </button>
+                            {reviewStatus?.review_status === 'manually_approved' ? (
+                                <span className="rounded-md bg-emerald-500/30 px-4 py-2 text-sm font-medium text-emerald-100">
+                                    Approved
+                                </span>
+                            ) : reviewStatus?.review_status === 'manually_rejected' ? (
+                                <span className="rounded-md bg-red-500/30 px-4 py-2 text-sm font-medium text-red-100">
+                                    Rejected
+                                </span>
+                            ) : reviewStatus?.review_status === 'auto_approved' ? (
+                                <span className="rounded-md bg-emerald-500/30 px-4 py-2 text-sm font-medium text-emerald-100">
+                                    Auto-Approved
+                                </span>
+                            ) : (
+                                <>
+                                    <button
+                                        className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
+                                        onClick={() => setShowManualMatchModal(true)}
+                                        disabled={actionLoading !== null}
+                                    >
+                                        {actionLoading === 'approve' ? 'Approving...' : 'Approve'}
+                                    </button>
+                                    <button
+                                        className="rounded-md bg-white/10 px-4 py-2 text-sm font-medium text-white hover:bg-white/20 disabled:opacity-50"
+                                        onClick={handleReject}
+                                        disabled={actionLoading !== null}
+                                    >
+                                        {actionLoading === 'reject' ? 'Rejecting...' : 'Reject'}
+                                    </button>
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -223,11 +304,10 @@ export function ApplicationDetailPage() {
                     {TABS.map((tab) => (
                         <button
                             key={tab.id}
-                            className={`whitespace-nowrap border-b-2 px-1 py-3 text-sm font-medium transition-colors ${
-                                activeTab === tab.id
-                                    ? 'border-slate-900 text-slate-900'
-                                    : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700'
-                            }`}
+                            className={`whitespace-nowrap border-b-2 px-1 py-3 text-sm font-medium transition-colors ${activeTab === tab.id
+                                ? 'border-slate-900 text-slate-900'
+                                : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700'
+                                }`}
                             onClick={() => setActiveTab(tab.id)}
                         >
                             {tab.label}
@@ -263,6 +343,39 @@ export function ApplicationDetailPage() {
                     <WorkflowTab application={application} />
                 )}
             </div>
+
+            {/* Manual Match Modal */}
+            {showManualMatchModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                    <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+                        <h3 className="text-lg font-semibold text-slate-900">Manual Lender Match</h3>
+                        <p className="mt-2 text-sm text-slate-600">
+                            Select a lender program to manually match this application.
+                        </p>
+                        <div className="mt-4 max-h-64 space-y-2 overflow-auto">
+                            {lenderPrograms.map((program) => (
+                                <button
+                                    key={program.id}
+                                    onClick={() => handleManualMatch(program.id)}
+                                    disabled={actionLoading === 'manual-match'}
+                                    className="w-full rounded-md border border-slate-200 p-3 text-left hover:border-indigo-300 hover:bg-indigo-50 disabled:opacity-50"
+                                >
+                                    <div className="font-medium text-slate-900">{program.name}</div>
+                                    <div className="text-sm text-slate-500">{program.lender_name}</div>
+                                </button>
+                            ))}
+                        </div>
+                        <div className="mt-4 flex justify-end gap-2">
+                            <button
+                                onClick={() => setShowManualMatchModal(false)}
+                                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }
@@ -968,6 +1081,25 @@ function WorkflowTab({ application }: { application: Application }) {
         }
     }
 
+    const [rerunning, setRerunning] = useState(false)
+    const handleRerunWorkflow = async () => {
+        setRerunning(true)
+        try {
+            const result = await rerunWorkflow(application.id)
+            setSelectedResult(result)
+            // Reload history
+            const historyData = await getWorkflowHistory(application.id).catch(() => ({ history: [] }))
+            setWorkflowHistory(historyData.history || [])
+            if (historyData.history && historyData.history.length > 0) {
+                setSelectedRunId(historyData.history[0].match_run_id)
+            }
+        } catch (e) {
+            console.error('Failed to rerun workflow:', e)
+        } finally {
+            setRerunning(false)
+        }
+    }
+
     const formatDate = (dateStr?: string) => {
         if (!dateStr) return '—'
         return new Date(dateStr).toLocaleString('en-US', {
@@ -1052,14 +1184,33 @@ function WorkflowTab({ application }: { application: Application }) {
                         Track verification checks and workflow progress
                     </p>
                 </div>
-                {selectedResult?.risk_assessment?.overall_risk && (
-                    <div className="text-right">
-                        <div className="text-xs text-slate-500">Overall Risk</div>
-                        <span className={`mt-1 inline-block rounded-full px-3 py-1 text-sm font-medium ${getRiskBadge(selectedResult.risk_assessment.overall_risk)}`}>
-                            {selectedResult.risk_assessment.overall_risk.toUpperCase()}
-                        </span>
-                    </div>
-                )}
+                <div className="flex items-center gap-4">
+                    <button
+                        onClick={handleRerunWorkflow}
+                        disabled={rerunning}
+                        className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                    >
+                        {rerunning ? (
+                            <span className="flex items-center gap-2">
+                                <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                </svg>
+                                Rerunning...
+                            </span>
+                        ) : (
+                            'Rerun Workflow'
+                        )}
+                    </button>
+                    {selectedResult?.risk_assessment?.overall_risk && (
+                        <div className="text-right">
+                            <div className="text-xs text-slate-500">Overall Risk</div>
+                            <span className={`mt-1 inline-block rounded-full px-3 py-1 text-sm font-medium ${getRiskBadge(selectedResult.risk_assessment.overall_risk)}`}>
+                                {selectedResult.risk_assessment.overall_risk.toUpperCase()}
+                            </span>
+                        </div>
+                    )}
+                </div>
             </div>
 
             <div className="grid gap-6 lg:grid-cols-2">
@@ -1072,69 +1223,77 @@ function WorkflowTab({ application }: { application: Application }) {
                         </div>
                     ) : (
                         <div className="space-y-3">
-                            {workflowHistory.map((item, idx) => (
-                                <div
-                                    key={item.match_run_id}
-                                    className={`cursor-pointer rounded-lg border p-4 transition-colors ${
-                                        selectedRunId === item.match_run_id
+                            {workflowHistory.map((item, idx) => {
+                                // Calculate run number (total - idx since history is descending)
+                                const runNumber = workflowHistory.length - idx
+                                return (
+                                    <div
+                                        key={item.match_run_id}
+                                        className={`cursor-pointer rounded-lg border p-4 transition-colors ${selectedRunId === item.match_run_id
                                             ? 'border-indigo-300 bg-indigo-50'
                                             : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-                                    }`}
-                                    onClick={() => handleSelectRun(item.match_run_id)}
-                                >
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <div className={`flex h-8 w-8 items-center justify-center rounded-full ${
-                                                item.status === 'completed' ? 'bg-emerald-100' :
-                                                item.status === 'partial' ? 'bg-amber-100' :
-                                                item.status === 'failed' ? 'bg-red-100' :
-                                                'bg-slate-100'
-                                            }`}>
-                                                {item.status === 'completed' ? (
-                                                    <svg className="h-4 w-4 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
-                                                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                                    </svg>
-                                                ) : item.status === 'partial' ? (
-                                                    <svg className="h-4 w-4 text-amber-600" fill="currentColor" viewBox="0 0 20 20">
-                                                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                                                    </svg>
-                                                ) : item.status === 'failed' ? (
-                                                    <svg className="h-4 w-4 text-red-600" fill="currentColor" viewBox="0 0 20 20">
-                                                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                                                    </svg>
-                                                ) : (
-                                                    <span className="text-xs font-semibold text-slate-500">{idx + 1}</span>
+                                            }`}
+                                        onClick={() => handleSelectRun(item.match_run_id)}
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`relative flex h-10 w-10 items-center justify-center rounded-full ${item.status === 'completed' ? 'bg-emerald-100' :
+                                                    item.status === 'partial' ? 'bg-amber-100' :
+                                                        item.status === 'failed' ? 'bg-red-100' :
+                                                            'bg-slate-100'
+                                                    }`}>
+                                                    {item.status === 'completed' ? (
+                                                        <svg className="h-5 w-5 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
+                                                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                                        </svg>
+                                                    ) : item.status === 'partial' ? (
+                                                        <svg className="h-5 w-5 text-amber-600" fill="currentColor" viewBox="0 0 20 20">
+                                                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                                        </svg>
+                                                    ) : item.status === 'failed' ? (
+                                                        <svg className="h-5 w-5 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                                                            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                                        </svg>
+                                                    ) : (
+                                                        <span className="text-sm font-semibold text-slate-500">#{runNumber}</span>
+                                                    )}
+                                                    {/* Run number badge */}
+                                                    <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-bold text-white">
+                                                        {runNumber}
+                                                    </span>
+                                                </div>
+                                                <div>
+                                                    <div className="font-medium text-slate-900">
+                                                        <span className="text-indigo-600 font-semibold">Run #{runNumber}</span>
+                                                        {' · '}
+                                                        {getStepDisplayName(item.step || 'unknown')}
+                                                    </div>
+                                                    <div className="text-xs text-slate-500">
+                                                        {formatDate(item.created_at)}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                {item.risk_level && (
+                                                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getRiskBadge(item.risk_level)}`}>
+                                                        {item.risk_level}
+                                                    </span>
+                                                )}
+                                                {item.flags_count > 0 && (
+                                                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                                                        {item.flags_count} flags
+                                                    </span>
+                                                )}
+                                                {item.match_results_count > 0 && (
+                                                    <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                                                        {item.match_results_count} matches
+                                                    </span>
                                                 )}
                                             </div>
-                                            <div>
-                                                <div className="font-medium text-slate-900">
-                                                    {getStepDisplayName(item.step || 'unknown')}
-                                                </div>
-                                                <div className="text-xs text-slate-500">
-                                                    {formatDate(item.created_at)}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            {item.risk_level && (
-                                                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getRiskBadge(item.risk_level)}`}>
-                                                    {item.risk_level}
-                                                </span>
-                                            )}
-                                            {item.flags_count > 0 && (
-                                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
-                                                    {item.flags_count} flags
-                                                </span>
-                                            )}
-                                            {item.match_results_count > 0 && (
-                                                <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
-                                                    {item.match_results_count} matches
-                                                </span>
-                                            )}
                                         </div>
                                     </div>
-                                </div>
-                            ))}
+                                )
+                            })}
                         </div>
                     )}
                 </div>
@@ -1167,12 +1326,11 @@ function WorkflowTab({ application }: { application: Application }) {
                                 <div key={checkType} className="rounded-lg border border-slate-200 p-4">
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-3">
-                                            <div className={`flex h-8 w-8 items-center justify-center rounded-full ${
-                                                result.status === 'completed' ? 'bg-emerald-100' :
+                                            <div className={`flex h-8 w-8 items-center justify-center rounded-full ${result.status === 'completed' ? 'bg-emerald-100' :
                                                 result.status === 'needs_review' ? 'bg-amber-100' :
-                                                result.status === 'failed' ? 'bg-red-100' :
-                                                'bg-slate-100'
-                                            }`}>
+                                                    result.status === 'failed' ? 'bg-red-100' :
+                                                        'bg-slate-100'
+                                                }`}>
                                                 {result.status === 'completed' ? (
                                                     <svg className="h-4 w-4 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
                                                         <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />

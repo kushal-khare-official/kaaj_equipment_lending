@@ -450,6 +450,13 @@ def get_review_status(
     )
 
 
+class ManualMatchRequest(BaseModel):
+    """Request for manually matching application to lender program."""
+    lender_program_id: str
+    term_months: Optional[int] = None
+    interest_rate: Optional[float] = None
+
+
 @router.post("/{application_id}/review", response_model=ReviewStatusOut)
 def manual_review(
     application_id: str,
@@ -478,11 +485,15 @@ def manual_review(
     if payload.action not in ["approve", "reject"]:
         raise HTTPException(status_code=400, detail="Action must be 'approve' or 'reject'")
 
-    # Update review status based on action
+    # Update review status and application status based on action
+    from app.shared.enums import ApplicationStatus
+    
     if payload.action == "approve":
         application.review_status = ReviewStatus.MANUALLY_APPROVED
+        application.status = ApplicationStatus.APPROVED
     else:
         application.review_status = ReviewStatus.MANUALLY_REJECTED
+        application.status = ApplicationStatus.DECLINED
 
     application.reviewed_by = payload.reviewer
     application.reviewed_at = datetime.utcnow()
@@ -514,6 +525,207 @@ def manual_review(
         reviewed_by=application.reviewed_by,
         reviewed_at=application.reviewed_at.isoformat() if application.reviewed_at else None,
     )
+
+
+@router.post("/{application_id}/rerun", response_model=WorkflowResultOut)
+async def rerun_workflow(
+    application_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """
+    Rerun the complete workflow for an application.
+
+    This endpoint re-executes all verification checks and lender matching
+    from scratch. Use this when data has changed or when retrying after
+    transient failures.
+
+    Args:
+        application_id: UUID of the application
+
+    Returns:
+        WorkflowResultOut with updated check results
+    """
+    try:
+        app_uuid = UUID(application_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid application_id")
+
+    # Load application with relationships
+    application = (
+        db.query(Application)
+        .options(
+            joinedload(Application.guarantors),
+            joinedload(Application.business_credit),
+            joinedload(Application.equipment),
+            joinedload(Application.loan_request),
+            joinedload(Application.document_requests),
+        )
+        .filter(Application.id == app_uuid)
+        .first()
+    )
+
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    # Reset review status to pending for re-evaluation
+    application.review_status = ReviewStatus.PENDING
+    application.requires_manual_review = False
+    application.reviewed_by = None
+    application.reviewed_at = None
+    db.commit()
+
+    # Load lender programs for matching
+    programs = (
+        db.query(LenderProgram)
+        .options(joinedload(LenderProgram.lender), joinedload(LenderProgram.criteria))
+        .all()
+    )
+
+    # Run complete workflow at REVIEW step (runs all checks)
+    match_run = await run_application_workflow(application, ApplicationStep.REVIEW, db, programs)
+
+    # Log the rerun action
+    log_action(
+        db,
+        actor="underwriter",
+        entity_type="workflow",
+        entity_id=match_run.id,
+        action="rerun_workflow",
+        application_id=application.id,
+        payload={
+            "status": match_run.status,
+            "match_results_count": len(match_run.results) if match_run.results else 0,
+        },
+    )
+
+    logger.info(f"Workflow rerun completed for application {application_id}")
+
+    return _format_workflow_result(match_run)
+
+
+@router.post("/{application_id}/manual-match")
+def manual_match(
+    application_id: str,
+    payload: ManualMatchRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Manually match an application to a lender program.
+
+    This allows underwriters to bypass automated matching and directly
+    assign a lender program to an application, with custom terms if desired.
+
+    Args:
+        application_id: UUID of the application
+        payload: Lender program ID and optional custom terms
+
+    Returns:
+        Updated application with loan terms
+    """
+    from app.models.application import MatchRun, MatchResult, LoanRequest as LoanRequestModel
+
+    try:
+        app_uuid = UUID(application_id)
+        program_uuid = UUID(payload.lender_program_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid application_id or lender_program_id")
+
+    application = (
+        db.query(Application)
+        .options(joinedload(Application.loan_request))
+        .filter(Application.id == app_uuid)
+        .first()
+    )
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    program = (
+        db.query(LenderProgram)
+        .options(joinedload(LenderProgram.lender))
+        .filter(LenderProgram.id == program_uuid)
+        .first()
+    )
+    if not program:
+        raise HTTPException(status_code=404, detail="Lender program not found")
+
+    # Get term and rate from payload or program defaults
+    term_months = payload.term_months or program.term_default or program.term_max or 60
+    interest_rate = payload.interest_rate or (float(program.interest_rate_default) if program.interest_rate_default else 8.0)
+
+    # Update or create loan request with matched terms
+    if application.loan_request:
+        application.loan_request.term_months = term_months
+    else:
+        loan_request = LoanRequestModel(
+            application_id=application.id,
+            term_months=term_months,
+        )
+        db.add(loan_request)
+
+    # Create a manual match run and result
+    match_run = MatchRun(
+        application_id=application.id,
+        status="completed",
+        check_results={
+            "step": "review",
+            "manual_match": True,
+            "matched_by": "underwriter",
+        },
+    )
+    db.add(match_run)
+    db.flush()
+
+    match_result = MatchResult(
+        match_run_id=match_run.id,
+        lender_program_id=program.id,
+        eligible=True,
+        fit_score=100,  # Manual match gets full score
+        reasons="Manually matched by underwriter",
+    )
+    db.add(match_result)
+
+    # Update application status and assigned lender program
+    from app.shared.enums import ApplicationStatus
+    
+    application.review_status = ReviewStatus.MANUALLY_APPROVED
+    application.status = ApplicationStatus.APPROVED  # Set application status to approved
+    application.reviewed_by = "underwriter"
+    application.reviewed_at = datetime.utcnow()
+    application.assigned_lender_program_id = program.id
+    application.assigned_term_months = term_months
+    application.assigned_interest_rate = interest_rate
+
+    db.commit()
+
+    # Log the manual match
+    log_action(
+        db,
+        actor="underwriter",
+        entity_type="match",
+        entity_id=match_run.id,
+        action="manual_match",
+        application_id=application.id,
+        payload={
+            "lender_program_id": str(program.id),
+            "lender_name": program.lender.name if program.lender else None,
+            "program_name": program.name,
+            "term_months": term_months,
+            "interest_rate": interest_rate,
+        },
+    )
+
+    logger.info(f"Application {application_id} manually matched to program {program.name}")
+
+    return {
+        "success": True,
+        "application_id": str(application.id),
+        "lender_program_id": str(program.id),
+        "lender_name": program.lender.name if program.lender else None,
+        "program_name": program.name,
+        "term_months": term_months,
+        "interest_rate": interest_rate,
+    }
 
 
 # =============================================================================

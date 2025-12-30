@@ -74,6 +74,13 @@ def create_application(payload: ApplicationCreate, db: Session = Depends(get_db)
         status=ApplicationStatus.PROCESSING,
         business_name=payload.business_name,
         loan_type=payload.loan_type,
+        business_tin=payload.business_tin,
+        business_phone=payload.business_phone,
+        business_address_street=payload.business_address_street,
+        business_address_city=payload.business_address_city,
+        business_address_state=payload.business_address_state,
+        business_address_zip=payload.business_address_zip,
+        incorporation_date=payload.incorporation_date,
     )
     app.guarantors = [Guarantor(**g.model_dump()) for g in payload.guarantors]
     if payload.business_credit:
@@ -168,6 +175,22 @@ def update_application(application_id: str, payload: ApplicationUpdate, db: Sess
     if payload.current_step is not None:
         app.current_step = payload.current_step
 
+    # Update business info fields
+    if payload.business_tin is not None:
+        app.business_tin = payload.business_tin
+    if payload.business_phone is not None:
+        app.business_phone = payload.business_phone
+    if payload.business_address_street is not None:
+        app.business_address_street = payload.business_address_street
+    if payload.business_address_city is not None:
+        app.business_address_city = payload.business_address_city
+    if payload.business_address_state is not None:
+        app.business_address_state = payload.business_address_state
+    if payload.business_address_zip is not None:
+        app.business_address_zip = payload.business_address_zip
+    if payload.incorporation_date is not None:
+        app.incorporation_date = payload.incorporation_date
+
     # Update guarantors - replace all if provided
     if payload.guarantors is not None:
         # Delete existing guarantors
@@ -187,14 +210,21 @@ def update_application(application_id: str, payload: ApplicationUpdate, db: Sess
         # Delete existing equipment
         for e in app.equipment:
             db.delete(e)
+        db.flush()  # Flush deletes before adding new records
         # Add new equipment
         app.equipment = [Equipment(**e.model_dump()) for e in payload.equipment]
 
-    # Update loan_request - replace if provided
+    # Update loan_request - update existing or create new
     if payload.loan_request is not None:
         if app.loan_request:
-            db.delete(app.loan_request)
-        app.loan_request = LoanRequest(**payload.loan_request.model_dump())
+            # Update existing loan_request instead of delete/insert
+            loan_data = payload.loan_request.model_dump()
+            for key, value in loan_data.items():
+                if value is not None:
+                    setattr(app.loan_request, key, value)
+        else:
+            # Create new loan_request
+            app.loan_request = LoanRequest(**payload.loan_request.model_dump())
 
     db.commit()
     db.refresh(app)

@@ -366,3 +366,45 @@ export async function manualReview(
   return res.json()
 }
 
+/**
+ * Rerun the complete workflow for an application.
+ */
+export async function rerunWorkflow(applicationId: string): Promise<WorkflowResult> {
+  const res = await fetch(`${API_BASE}/workflow/${applicationId}/rerun`, {
+    method: "POST",
+    headers: { "X-Role": "underwriter" },
+  })
+  if (!res.ok) throw new Error("failed to rerun workflow")
+  return res.json()
+}
+
+/**
+ * Manually match an application to a lender program.
+ */
+export async function manualMatch(
+  applicationId: string,
+  lenderProgramId: string,
+  termMonths?: number,
+  interestRate?: number
+): Promise<{
+  success: boolean
+  application_id: string
+  lender_program_id: string
+  lender_name: string
+  program_name: string
+  term_months: number
+  interest_rate: number
+}> {
+  const res = await fetch(`${API_BASE}/workflow/${applicationId}/manual-match`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Role": "underwriter" },
+    body: JSON.stringify({
+      lender_program_id: lenderProgramId,
+      term_months: termMonths,
+      interest_rate: interestRate,
+    }),
+  })
+  if (!res.ok) throw new Error("failed to manual match")
+  return res.json()
+}
+

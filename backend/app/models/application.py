@@ -18,6 +18,15 @@ class Application(TimestampMixin, UUIDMixin, Base):
     loan_type = Column(String, nullable=True)
     current_step = Column(Integer, nullable=True, default=1)  # Track which step the user is on
 
+    # Business info fields
+    business_tin = Column(String, nullable=True)  # Tax ID
+    business_phone = Column(String, nullable=True)
+    business_address_street = Column(String, nullable=True)
+    business_address_city = Column(String, nullable=True)
+    business_address_state = Column(String, nullable=True)
+    business_address_zip = Column(String, nullable=True)
+    incorporation_date = Column(Date, nullable=True)  # For calculating TIB (Time in Business)
+
     # Workflow state fields
     workflow_step = Column(String, nullable=True)  # Current ApplicationStep value
     workflow_status = Column(String, nullable=True)  # Current WorkflowStatus value
@@ -34,6 +43,15 @@ class Application(TimestampMixin, UUIDMixin, Base):
     requires_manual_review = Column(Boolean, nullable=True, default=False)  # True if document fallback triggered
     reviewed_by = Column(String, nullable=True)  # Actor who performed manual review
     reviewed_at = Column(DateTime, nullable=True)  # Timestamp of manual review
+
+    # Assigned lender program (selected at approval)
+    assigned_lender_program_id = Column(Uuid, ForeignKey("lender_programs.id", ondelete="SET NULL"), nullable=True)
+    assigned_term_months = Column(Integer, nullable=True)  # Term from the assigned program
+    assigned_interest_rate = Column(Numeric(5, 2), nullable=True)  # Interest rate from the assigned program
+
+    # Criteria tracking for lender matching
+    criteria_met = Column(Integer, nullable=True)  # Number of criteria met by best match
+    criteria_total = Column(Integer, nullable=True)  # Total number of criteria evaluated
 
     guarantors = relationship("Guarantor", back_populates="application", cascade="all, delete-orphan")
     business_credit = relationship("BusinessCredit", back_populates="application", uselist=False, cascade="all, delete-orphan")
@@ -52,6 +70,13 @@ class Guarantor(TimestampMixin, UUIDMixin, Base):
     first_name = Column(String, nullable=True)
     last_name = Column(String, nullable=True)
     ssn = Column(String, nullable=True)  # Store encrypted/masked SSN
+    dob = Column(Date, nullable=True)  # Date of birth
+    phone = Column(String, nullable=True)
+    email = Column(String, nullable=True)
+    address_street = Column(String, nullable=True)
+    address_city = Column(String, nullable=True)
+    address_state = Column(String, nullable=True)
+    address_zip = Column(String, nullable=True)
     fico = Column(Integer, nullable=True)
     cdl_flag = Column(Boolean, default=False, nullable=False)
     homeownership = Column(Boolean, default=False, nullable=True)

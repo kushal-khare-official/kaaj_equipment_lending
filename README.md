@@ -94,6 +94,34 @@ uvicorn app.main:app --reload
 
 Backend runs at: http://localhost:8000
 
+### Hatchet Workflow Worker (Optional)
+
+The platform uses [Hatchet](https://hatchet.run) for workflow orchestration. To run workflows asynchronously:
+
+```bash
+# Navigate to backend directory
+cd backend
+
+# Ensure virtual environment is activated
+source venv/bin/activate
+
+# Start the Hatchet worker
+python -m app.workflows.worker
+```
+
+**Environment Variables** (add to `.env`):
+```env
+HATCHET_CLIENT_TOKEN=your-token      # Optional for local dev
+HATCHET_HOST_PORT=localhost:7070     # Default Hatchet server
+HATCHET_TLS_ENABLED=false            # Set to true for production
+```
+
+The worker registers two workflows:
+- **ApplicationWorkflow**: Full application processing (verification, risk assessment, matching)
+- **MatchWorkflow**: Standalone lender program matching
+
+> **Note**: The worker is optional for development. Workflows can also run synchronously within the API server.
+
 ### Frontend Setup
 
 ```bash

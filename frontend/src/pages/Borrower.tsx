@@ -41,6 +41,7 @@ type Guarantor = {
     phone: string
     email: string
     ssn: string
+    dob: string  // Date of birth (YYYY-MM-DD)
     fico?: number
     kyc_verified?: boolean
     is_primary: boolean
@@ -53,6 +54,7 @@ type BusinessInfo = {
     phone: string
     email: string
     tin: string
+    incorporation_date: string  // YYYY-MM-DD format for TIB calculation
     paynet_score?: number
 }
 
@@ -103,6 +105,7 @@ const emptyGuarantor: Guarantor = {
     phone: '',
     email: '',
     ssn: '',
+    dob: '',
     is_primary: false,
 }
 
@@ -124,6 +127,7 @@ const initialFormData: FormData = {
         phone: '',
         email: '',
         tin: '',
+        incorporation_date: '',
     },
     guarantors: [],
     loan: {
@@ -367,6 +371,17 @@ function BusinessInfoStep({
                         onChange={(e) => onChange({ ...data, email: e.target.value })}
                     />
                 </div>
+
+                <div>
+                    <label className="block text-sm font-medium text-slate-700">Incorporation Date *</label>
+                    <input
+                        type="date"
+                        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+                        value={data.incorporation_date}
+                        onChange={(e) => onChange({ ...data, incorporation_date: e.target.value })}
+                    />
+                    <p className="mt-1 text-xs text-slate-500">Used to calculate Time in Business (TIB)</p>
+                </div>
             </div>
 
             {data.paynet_score !== undefined && (
@@ -532,6 +547,15 @@ function GuarantorsStep({
                                 className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
                                 value={guarantor.email}
                                 onChange={(e) => updateGuarantor(idx, 'email', e.target.value)}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700">Date of Birth *</label>
+                            <input
+                                type="date"
+                                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+                                value={guarantor.dob}
+                                onChange={(e) => updateGuarantor(idx, 'dob', e.target.value)}
                             />
                         </div>
                         <div className="md:col-span-3">
@@ -873,6 +897,11 @@ function DocumentsStep({
         return null
     }
 
+    // Check for pending manual review status
+    const isPendingManualReview = reviewStatus?.review_status === 'pending_manual_review'
+    const isRejected = reviewStatus?.review_status === 'manually_rejected'
+    const isApproved = reviewStatus?.review_status === 'auto_approved' || reviewStatus?.review_status === 'manually_approved'
+
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -884,6 +913,82 @@ function DocumentsStep({
                 </div>
                 {getReviewStatusBadge()}
             </div>
+
+            {/* Application Review Status Messages */}
+            {isPendingManualReview && (
+                <div className="rounded-lg border-2 border-amber-300 bg-amber-50 p-6">
+                    <div className="flex items-start gap-4">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100">
+                            <svg className="h-6 w-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        </div>
+                        <div className="flex-1">
+                            <h3 className="text-lg font-semibold text-amber-900">Application Under Review</h3>
+                            <p className="mt-2 text-sm text-amber-800">
+                                Your application requires manual review by our underwriting team. This typically happens when:
+                            </p>
+                            <ul className="mt-2 list-disc list-inside text-sm text-amber-700 space-y-1">
+                                <li>Additional verification is needed for identity or business information</li>
+                                <li>Credit profile requires closer examination</li>
+                                <li>Documents need human review for accuracy</li>
+                            </ul>
+                            <p className="mt-3 text-sm text-amber-800 font-medium">
+                                Please wait while an underwriter reviews your application. You will be notified once a decision is made.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isRejected && (
+                <div className="rounded-lg border-2 border-red-300 bg-red-50 p-6">
+                    <div className="flex items-start gap-4">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+                            <svg className="h-6 w-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </div>
+                        <div className="flex-1">
+                            <h3 className="text-lg font-semibold text-red-900">We're Sorry</h3>
+                            <p className="mt-2 text-sm text-red-800">
+                                Unfortunately, we are unable to approve your application at this time. This decision was made after careful review of your application.
+                            </p>
+                            <p className="mt-3 text-sm text-red-700">
+                                Common reasons for this include:
+                            </p>
+                            <ul className="mt-2 list-disc list-inside text-sm text-red-700 space-y-1">
+                                <li>Credit score below minimum requirements</li>
+                                <li>Insufficient time in business</li>
+                                <li>Verification checks did not pass</li>
+                                <li>Unable to verify provided information</li>
+                            </ul>
+                            <p className="mt-3 text-sm text-red-800 font-medium">
+                                If you have questions about this decision or believe there may be an error, please contact our support team.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isApproved && hasEligibleMatch && (
+                <div className="rounded-lg border-2 border-emerald-300 bg-emerald-50 p-6">
+                    <div className="flex items-start gap-4">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
+                            <svg className="h-6 w-6 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                        </div>
+                        <div className="flex-1">
+                            <h3 className="text-lg font-semibold text-emerald-900">Application Approved!</h3>
+                            <p className="mt-2 text-sm text-emerald-800">
+                                Great news! Your application has been approved and matched with eligible lenders.
+                                You can proceed to review the terms and sign your application.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Lender Match Results Preview */}
             <div className="rounded-lg border border-slate-200 bg-white p-4">
@@ -1005,8 +1110,8 @@ function DocumentsStep({
                         <div
                             key={doc.type}
                             className={`flex items-start justify-between rounded-lg border p-4 ${uploaded ? 'border-emerald-300 bg-emerald-50' :
-                                    isFromWorkflow ? 'border-amber-300 bg-amber-50' :
-                                        'border-slate-200 bg-white'
+                                isFromWorkflow ? 'border-amber-300 bg-amber-50' :
+                                    'border-slate-200 bg-white'
                                 }`}
                         >
                             <div className="flex items-start gap-3 flex-1">
@@ -1252,72 +1357,219 @@ function ReviewSignStep({
     )
 }
 
+// Confetti animation component
+function Confetti() {
+    useEffect(() => {
+        // Create confetti pieces
+        const colors = ['#10b981', '#059669', '#34d399', '#6ee7b7', '#fbbf24', '#f59e0b']
+        const container = document.getElementById('confetti-container')
+        if (!container) return
+
+        const pieces: HTMLDivElement[] = []
+        for (let i = 0; i < 100; i++) {
+            const piece = document.createElement('div')
+            piece.style.cssText = `
+                position: absolute;
+                width: ${Math.random() * 10 + 5}px;
+                height: ${Math.random() * 10 + 5}px;
+                background: ${colors[Math.floor(Math.random() * colors.length)]};
+                left: ${Math.random() * 100}%;
+                top: -20px;
+                opacity: 1;
+                border-radius: ${Math.random() > 0.5 ? '50%' : '0'};
+                transform: rotate(${Math.random() * 360}deg);
+                animation: confetti-fall ${Math.random() * 2 + 2}s ease-out forwards;
+                animation-delay: ${Math.random() * 0.5}s;
+            `
+            container.appendChild(piece)
+            pieces.push(piece)
+        }
+
+        // Cleanup after animation
+        const timer = setTimeout(() => {
+            pieces.forEach(p => p.remove())
+        }, 4000)
+
+        return () => {
+            clearTimeout(timer)
+            pieces.forEach(p => p.remove())
+        }
+    }, [])
+
+    return (
+        <>
+            <style>{`
+                @keyframes confetti-fall {
+                    0% {
+                        transform: translateY(0) rotate(0deg);
+                        opacity: 1;
+                    }
+                    100% {
+                        transform: translateY(600px) rotate(720deg);
+                        opacity: 0;
+                    }
+                }
+            `}</style>
+            <div id="confetti-container" className="fixed inset-0 pointer-events-none overflow-hidden z-50" />
+        </>
+    )
+}
+
 // Step 6: Success
 function SuccessStep({
     applicationId,
     matchResults,
+    loanAmount,
+    businessName,
 }: {
     applicationId: string
     matchResults: any[] | null
+    loanAmount?: string
+    businessName?: string
 }) {
+    const [showConfetti, setShowConfetti] = useState(true)
     const eligibleMatches = matchResults?.filter((r: any) => r.eligible) || []
+    const bestMatch = eligibleMatches[0] // First eligible is the best (sorted by fit score)
+
+    useEffect(() => {
+        // Stop confetti after 4 seconds
+        const timer = setTimeout(() => setShowConfetti(false), 4000)
+        return () => clearTimeout(timer)
+    }, [])
+
+    // Format loan amount for display
+    const formattedLoanAmount = loanAmount
+        ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(parseFloat(loanAmount.replace(/[^0-9.]/g, '')))
+        : null
 
     return (
-        <div className="space-y-6">
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-8 text-center">
-                <svg className="mx-auto h-16 w-16 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                </svg>
-                <h2 className="mt-4 text-2xl font-semibold text-emerald-900">Application Submitted Successfully!</h2>
-                <p className="mt-2 text-sm text-emerald-700">
-                    Your loan application has been submitted and signed.
+        <div className="space-y-6 relative">
+            {showConfetti && <Confetti />}
+
+            <div className="rounded-lg border-2 border-emerald-300 bg-gradient-to-br from-emerald-50 to-emerald-100 p-8 text-center shadow-lg">
+                <div className="relative inline-block">
+                    <svg className="mx-auto h-20 w-20 text-emerald-600 animate-bounce" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                    <div className="absolute -top-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-yellow-400 text-xs">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
+                        <span className="relative">✓</span>
+                    </div>
+                </div>
+                <h2 className="mt-4 text-3xl font-bold text-emerald-900">Congratulations!</h2>
+                <p className="mt-2 text-lg text-emerald-800">
+                    Your loan application has been submitted and signed successfully.
                 </p>
-                <p className="mt-1 text-sm text-emerald-600">
-                    Application ID: <span className="font-mono font-semibold">{applicationId}</span>
+                <p className="mt-2 text-sm text-emerald-600">
+                    Application ID: <span className="font-mono font-semibold bg-emerald-200 px-2 py-0.5 rounded">{applicationId}</span>
                 </p>
             </div>
 
-            {eligibleMatches.length > 0 && (
-                <div className="rounded-lg border border-slate-200 bg-white p-6">
-                    <h3 className="text-lg font-semibold text-slate-900 mb-4">Matched Lender Programs</h3>
-                    <div className="space-y-3">
-                        {eligibleMatches.map((r: any, idx: number) => (
-                            <div key={r.lender_program_id || idx} className="rounded-md border border-emerald-200 bg-emerald-50 p-4">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <span className="font-semibold text-slate-900">
-                                            {r.lender_name || 'Lender'} - {r.program_name || 'Program'}
-                                        </span>
-                                        <div className="flex gap-3 mt-1">
-                                            {r.fit_score !== undefined && (
-                                                <span className="text-sm text-slate-600">Fit Score: {r.fit_score}%</span>
-                                            )}
-                                            {r.assigned_term_months && (
-                                                <span className="text-sm font-medium text-emerald-700">Term: {r.assigned_term_months} months</span>
-                                            )}
-                                            {r.assigned_interest_rate && (
-                                                <span className="text-sm font-medium text-emerald-700">Rate: {r.assigned_interest_rate}%</span>
-                                            )}
+            {/* Assigned Lender Program */}
+            {bestMatch && (
+                <div className="rounded-lg border-2 border-blue-200 bg-blue-50 p-6">
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100">
+                            <svg className="h-5 w-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-semibold text-blue-900">Your Approved Lender</h3>
+                            <p className="text-sm text-blue-700">You have been matched with the following program</p>
+                        </div>
+                    </div>
+                    <div className="rounded-md border border-blue-200 bg-white p-4">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <span className="text-lg font-semibold text-slate-900">
+                                    {bestMatch.lender_name || 'Lender'} - {bestMatch.program_name || 'Program'}
+                                </span>
+                                <div className="flex flex-wrap gap-4 mt-2">
+                                    {bestMatch.assigned_term_months && (
+                                        <div className="bg-emerald-100 rounded-md px-3 py-1">
+                                            <span className="text-xs text-emerald-600">Term</span>
+                                            <p className="font-semibold text-emerald-800">{bestMatch.assigned_term_months} months</p>
                                         </div>
-                                    </div>
-                                    <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
-                                        Matched
-                                    </span>
+                                    )}
+                                    {bestMatch.assigned_interest_rate && (
+                                        <div className="bg-emerald-100 rounded-md px-3 py-1">
+                                            <span className="text-xs text-emerald-600">Interest Rate</span>
+                                            <p className="font-semibold text-emerald-800">{bestMatch.assigned_interest_rate}% APR</p>
+                                        </div>
+                                    )}
+                                    {formattedLoanAmount && (
+                                        <div className="bg-emerald-100 rounded-md px-3 py-1">
+                                            <span className="text-xs text-emerald-600">Loan Amount</span>
+                                            <p className="font-semibold text-emerald-800">{formattedLoanAmount}</p>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
-                        ))}
+                            <span className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-md">
+                                Approved
+                            </span>
+                        </div>
                     </div>
                 </div>
             )}
 
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-6">
-                <h3 className="text-sm font-semibold text-slate-800 mb-2">What Happens Next?</h3>
-                <ol className="list-decimal list-inside space-y-2 text-sm text-slate-600">
-                    <li>Our underwriting team will review your application within 1-2 business days.</li>
-                    <li>You may be contacted for additional documentation if needed.</li>
-                    <li>Once approved, you'll receive loan terms and funding details via email.</li>
-                    <li>Questions? Contact our support team at support@example.com</li>
-                </ol>
+            {/* What Happens Next - Enhanced */}
+            <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex items-center gap-3 mb-4">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100">
+                        <svg className="h-5 w-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </div>
+                    <h3 className="text-lg font-semibold text-slate-800">What Happens Next?</h3>
+                </div>
+
+                <div className="space-y-4">
+                    <div className="flex items-start gap-4 p-4 rounded-lg bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500 text-white font-semibold text-sm">1</div>
+                        <div>
+                            <h4 className="font-semibold text-slate-800">Funds Disbursement</h4>
+                            <p className="text-sm text-slate-600">
+                                Once approved, {formattedLoanAmount || 'your loan amount'} will be credited directly to your registered bank account
+                                {businessName ? ` for ${businessName}` : ''}.
+                            </p>
+                            <p className="text-xs text-blue-600 mt-1 font-medium">
+                                Typical funding time: 2-3 business days after final approval
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="flex items-start gap-4 p-4 rounded-lg bg-gradient-to-r from-amber-50 to-amber-100 border border-amber-200">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-500 text-white font-semibold text-sm">2</div>
+                        <div>
+                            <h4 className="font-semibold text-slate-800">Repayment Schedule</h4>
+                            <p className="text-sm text-slate-600">
+                                You'll receive your complete repayment schedule via email, including monthly payment amounts and due dates.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="flex items-start gap-4 p-4 rounded-lg bg-gradient-to-r from-purple-50 to-purple-100 border border-purple-200">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-500 text-white font-semibold text-sm">3</div>
+                        <div>
+                            <h4 className="font-semibold text-slate-800">Need Help?</h4>
+                            <p className="text-sm text-slate-600">
+                                Questions about your application? Contact our support team at{' '}
+                                <a href="mailto:support@example.com" className="text-purple-600 font-medium hover:underline">
+                                    support@example.com
+                                </a>{' '}
+                                or call <span className="font-medium">(800) 123-4567</span>.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Confirmation Footer */}
+            <div className="text-center text-sm text-slate-500 p-4 border-t border-slate-200">
+                <p>A confirmation email has been sent to your registered email address.</p>
+                <p className="mt-1">Please save your Application ID for future reference.</p>
             </div>
         </div>
     )
@@ -1419,6 +1671,22 @@ export function BorrowerPage() {
                 setCurrentStep(savedStep)
                 setApplicationId(app.id)
 
+                // If we're at step 4 or beyond, load match results and review status
+                if (savedStep >= 4) {
+                    try {
+                        const [matchRes, docsRes, reviewRes] = await Promise.all([
+                            latestMatch(app.id),
+                            listDocuments(app.id),
+                            getReviewStatus(app.id),
+                        ])
+                        setMatchStatus(matchRes)
+                        setDocumentRequests(docsRes || [])
+                        setReviewStatus(reviewRes)
+                    } catch (e) {
+                        console.error('Failed to load match/review data:', e)
+                    }
+                }
+
                 // Prefill form data from existing application + prefill API data
                 setFormData(prev => ({
                     ...prev,
@@ -1429,6 +1697,7 @@ export function BorrowerPage() {
                         phone: prefillData?.phone || '',
                         email: app.merchant_email || prefillData?.email || '',
                         tin: prefillData?.tin || '',
+                        incorporation_date: prefillData?.formation_date || app.incorporation_date || '',
                         paynet_score: kybData?.paynet_score || app.business_credit?.paynet_score,
                     },
                     guarantors: prefillData?.guarantors?.map((g: any, idx: number) => {
@@ -1445,6 +1714,7 @@ export function BorrowerPage() {
                             phone: g.phone || '',
                             email: g.email || '',
                             ssn: savedGuarantor?.ssn || '',
+                            dob: savedGuarantor?.dob || '',
                             fico: savedGuarantor?.fico || undefined,
                             kyc_verified: undefined,
                             is_primary: savedGuarantor?.is_primary ?? idx === 0,
@@ -1458,6 +1728,7 @@ export function BorrowerPage() {
                         phone: '',
                         email: '',
                         ssn: g.ssn || '',
+                        dob: g.dob || '',
                         fico: g.fico,
                         kyc_verified: undefined,
                         is_primary: g.is_primary || idx === 0,
@@ -1528,6 +1799,7 @@ export function BorrowerPage() {
                         phone: data.phone || '',
                         email: data.email || '',
                         tin: data.tin || '',
+                        incorporation_date: data.formation_date || prev.business.incorporation_date || '',
                         paynet_score: kybRes.paynet_score,
                     },
                     guarantors: data.guarantors?.map((g: any, idx: number) => ({
@@ -1539,6 +1811,7 @@ export function BorrowerPage() {
                         phone: g.phone || '',
                         email: g.email || '',
                         ssn: '',
+                        dob: '',
                         is_primary: idx === 0,
                     })) || prev.guarantors,
                 }))
@@ -1631,46 +1904,76 @@ export function BorrowerPage() {
         }
     }
 
-    // Trigger matching when entering step 5
+    // Trigger matching - creates application if needed, then runs review workflow for lender matching
     const triggerMatching = async () => {
         if (matchStatus?.results) return // Already have results
 
         setMatchLoading(true)
         try {
-            // Submit application to get match results
-            const body = {
-                merchant_email: formData.business.email,
-                business_name: formData.business.legal_name,
-                loan_type: formData.loan.loan_type,
-                guarantors: formData.guarantors.map(g => ({
-                    is_primary: g.is_primary,
-                    first_name: g.first_name,
-                    last_name: g.last_name,
-                    fico: g.fico,
-                })),
-                business_credit: formData.business.paynet_score ? {
-                    paynet_score: formData.business.paynet_score,
-                } : undefined,
-                equipment: formData.loan.loan_type === 'Equipment Finance'
-                    ? formData.loan.equipment.map(eq => ({
-                        type: eq.type || formData.loan.loan_type,
-                        year: eq.year ? Number(eq.year) : undefined,
-                        mileage: eq.mileage ? Number(eq.mileage.replace(/[^0-9]/g, '')) : undefined,
-                        titled: eq.titled,
-                        private_party: eq.private_party,
-                    }))
-                    : [],
-                loan_request: {
-                    amount: formData.loan.amount ? Number(formData.loan.amount.replace(/[^0-9.]/g, '')) : undefined,
-                    down_payment: formData.loan.down_payment ? Number(formData.loan.down_payment.replace(/[^0-9.]/g, '')) : undefined,
-                },
-            }
-            const res = await createApplication(body)
-            setApplicationId(res.id)
+            let appId = applicationId
 
-            // Fetch match results
-            const matchRes = await latestMatch(res.id)
-            setMatchStatus(matchRes)
+            // Only create new application if we don't have one yet
+            if (!appId) {
+                // Submit application to get match results
+                const body = {
+                    merchant_email: formData.business.email,
+                    business_name: formData.business.legal_name,
+                    loan_type: formData.loan.loan_type,
+                    current_step: 4, // Save that we're moving to step 4
+                    guarantors: formData.guarantors.map(g => ({
+                        is_primary: g.is_primary,
+                        first_name: g.first_name,
+                        last_name: g.last_name,
+                        ssn: g.ssn,
+                        fico: g.fico,
+                    })),
+                    business_credit: formData.business.paynet_score ? {
+                        paynet_score: formData.business.paynet_score,
+                    } : undefined,
+                    equipment: formData.loan.loan_type === 'Equipment Finance'
+                        ? formData.loan.equipment.map(eq => ({
+                            type: eq.type || formData.loan.loan_type,
+                            make: eq.make || undefined,
+                            model: eq.model || undefined,
+                            year: eq.year ? Number(eq.year) : undefined,
+                            mileage: eq.mileage ? Number(eq.mileage.replace(/[^0-9]/g, '')) : undefined,
+                            titled: eq.titled,
+                            private_party: eq.private_party,
+                        }))
+                        : [],
+                    loan_request: {
+                        amount: formData.loan.amount ? Number(formData.loan.amount.replace(/[^0-9.]/g, '')) : undefined,
+                        term_months: formData.loan.term_months ? Number(formData.loan.term_months) : undefined,
+                        down_payment: formData.loan.down_payment ? Number(formData.loan.down_payment.replace(/[^0-9.]/g, '')) : undefined,
+                    },
+                }
+                const res = await createApplication(body)
+                appId = res.id
+                setApplicationId(res.id)
+            }
+
+            // Run the review workflow step to trigger lender matching
+            if (appId) {
+                // Trigger review workflow which includes lender matching
+                const workflowResult = await triggerWorkflow(appId, 'review')
+                setWorkflowResult(workflowResult)
+
+                // Fetch match results after workflow completes
+                const matchRes = await latestMatch(appId)
+                setMatchStatus(matchRes)
+
+                // Fetch document requests and review status
+                try {
+                    const [docsRes, reviewRes] = await Promise.all([
+                        listDocuments(appId),
+                        getReviewStatus(appId),
+                    ])
+                    setDocumentRequests(docsRes || [])
+                    setReviewStatus(reviewRes)
+                } catch (e) {
+                    console.error('Failed to fetch documents/review status:', e)
+                }
+            }
         } catch (e: any) {
             console.error('Matching error:', e)
             setError('Failed to evaluate lender matches')
@@ -1698,6 +2001,10 @@ export function BorrowerPage() {
                 }
                 if (reviewStatus?.review_status === 'manually_rejected') {
                     return false // Application was rejected
+                }
+                // Block if no eligible lenders and not manually approved
+                if (!hasEligibleMatch && reviewStatus?.review_status !== 'manually_approved') {
+                    return false // No eligible lenders, needs manual approval
                 }
                 return true
             case 5:
@@ -1738,15 +2045,16 @@ export function BorrowerPage() {
             } else if (currentStep === 3) {
                 updateData.loan_type = formData.loan.loan_type
                 updateData.loan_request = {
-                    amount: formData.loan.amount ? parseFloat(formData.loan.amount) : null,
-                    down_payment: formData.loan.down_payment ? parseFloat(formData.loan.down_payment) : null,
+                    amount: formData.loan.amount ? parseFloat(formData.loan.amount.replace(/[^0-9.]/g, '')) : null,
+                    term_months: formData.loan.term_months ? parseInt(formData.loan.term_months) : null,
+                    down_payment: formData.loan.down_payment ? parseFloat(formData.loan.down_payment.replace(/[^0-9.]/g, '')) : null,
                 }
                 updateData.equipment = formData.loan.equipment.map(e => ({
                     type: e.type,
                     make: e.make,
                     model: e.model,
                     year: e.year ? parseInt(e.year) : null,
-                    mileage: e.mileage ? parseInt(e.mileage) : null,
+                    mileage: e.mileage ? parseInt(e.mileage.replace(/[^0-9]/g, '')) : null,
                     titled: e.titled,
                     private_party: e.private_party,
                 }))
@@ -1761,23 +2069,17 @@ export function BorrowerPage() {
 
     const handleNext = async () => {
         if (currentStep === 3) {
-            // Moving to Step 4, trigger matching early so results show in Documents step
+            // Moving to Step 4 (Documents)
+            // Save progress first, then trigger matching which includes lender matching workflow
             await saveApplicationProgress(4)
             setCurrentStep(4)
+            // triggerMatching() runs the 'review' workflow step which includes lender matching
             await triggerMatching()
-            // Run workflow for loan_details step (current step 3)
-            if (applicationId) {
-                await runWorkflowForStep(3)
-            }
-            // Run workflow for documents step which will run the review workflow
-            if (applicationId) {
-                await runWorkflowForStep(4)
-            }
         } else if (currentStep === 4) {
-            // Moving to step 5, run review workflow
+            // Moving to step 5 (Review & Sign)
             await saveApplicationProgress(5)
             setCurrentStep(5)
-            // Run workflow for review step
+            // Run workflow for review step (may re-run matching if needed)
             if (applicationId) {
                 await runWorkflowForStep(5)
             }
@@ -1847,9 +2149,9 @@ export function BorrowerPage() {
 
                 {workflowResult && !workflowLoading && (
                     <div className={`mb-4 rounded-md px-4 py-2 text-sm ${workflowResult.status === 'completed' ? 'bg-emerald-50 text-emerald-700' :
-                            workflowResult.status === 'partial' ? 'bg-amber-50 text-amber-700' :
-                                workflowResult.status === 'failed' ? 'bg-red-50 text-red-700' :
-                                    'bg-slate-50 text-slate-700'
+                        workflowResult.status === 'partial' ? 'bg-amber-50 text-amber-700' :
+                            workflowResult.status === 'failed' ? 'bg-red-50 text-red-700' :
+                                'bg-slate-50 text-slate-700'
                         }`}>
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
@@ -1871,9 +2173,9 @@ export function BorrowerPage() {
                             </div>
                             {workflowResult.risk_assessment?.overall_risk && (
                                 <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${workflowResult.risk_assessment.overall_risk === 'low' ? 'bg-emerald-100 text-emerald-800' :
-                                        workflowResult.risk_assessment.overall_risk === 'medium' ? 'bg-amber-100 text-amber-800' :
-                                            workflowResult.risk_assessment.overall_risk === 'high' ? 'bg-orange-100 text-orange-800' :
-                                                'bg-red-100 text-red-800'
+                                    workflowResult.risk_assessment.overall_risk === 'medium' ? 'bg-amber-100 text-amber-800' :
+                                        workflowResult.risk_assessment.overall_risk === 'high' ? 'bg-orange-100 text-orange-800' :
+                                            'bg-red-100 text-red-800'
                                     }`}>
                                     Risk: {workflowResult.risk_assessment.overall_risk}
                                 </span>
@@ -1948,6 +2250,8 @@ export function BorrowerPage() {
                         <SuccessStep
                             applicationId={applicationId}
                             matchResults={matchStatus?.results || null}
+                            loanAmount={formData.loan.amount}
+                            businessName={formData.business.legal_name}
                         />
                     )}
                 </div>

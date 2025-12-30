@@ -431,11 +431,54 @@ def kyb_check(payload: Optional[KYBRequest] = None):
 
 @router.post("/business-search")
 def business_search(payload: Optional[BusinessSearchRequest] = None):
-    """Search for businesses by name and return matching results."""
+    """
+    Search for businesses by name and return matching results.
+
+    Test business name patterns for quick test scenarios:
+    - EXCELLENT TRUCKING INC: Perfect application scenario
+    - FAIR LOGISTICS LLC: Needs manual review scenario
+    - POOR TRANSPORT CO: High risk scenario
+    - NEW STARTUP DELIVERY: Startup scenario
+    """
     business_name = (payload.business_name or "").upper() if payload else ""
 
-    # Return mock search results - multiple businesses matching the search
-    results = [
+    # All available test businesses
+    all_businesses = [
+        # Quick Test Scenario A: Perfect Application
+        {
+            "id": "biz_excellent_001",
+            "legal_name": "EXCELLENT TRUCKING INC",
+            "city": "Dallas",
+            "state": "TX",
+        },
+        # Quick Test Scenario B: Needs Manual Review
+        {
+            "id": "biz_fair_001",
+            "legal_name": "FAIR LOGISTICS LLC",
+            "city": "Atlanta",
+            "state": "GA",
+        },
+        # Quick Test Scenario C: High Risk
+        {
+            "id": "biz_poor_001",
+            "legal_name": "POOR TRANSPORT CO",
+            "city": "Detroit",
+            "state": "MI",
+        },
+        # Quick Test Scenario D: Startup
+        {
+            "id": "biz_startup_001",
+            "legal_name": "NEW STARTUP DELIVERY",
+            "city": "Austin",
+            "state": "TX",
+        },
+        # Standard test businesses
+        {
+            "id": "biz_good_001",
+            "legal_name": "GOOD FREIGHT SOLUTIONS",
+            "city": "Denver",
+            "state": "CO",
+        },
         {
             "id": "biz_001",
             "legal_name": "KAAJ TECHNOLOGIES INC.",
@@ -457,8 +500,9 @@ def business_search(payload: Optional[BusinessSearchRequest] = None):
     ]
 
     # Filter results based on search term (case-insensitive)
+    results = all_businesses
     if business_name:
-        results = [r for r in results if business_name in r["legal_name"].upper()]
+        results = [r for r in all_businesses if business_name in r["legal_name"].upper()]
 
     return {
         "status": "success",
@@ -469,11 +513,214 @@ def business_search(payload: Optional[BusinessSearchRequest] = None):
 
 @router.post("/business-prefill")
 def business_prefill(payload: Optional[BusinessSelectRequest] = None):
-    """Get full business details for a selected business ID."""
+    """
+    Get full business details for a selected business ID.
+
+    Test scenario business IDs:
+    - biz_excellent_001: Perfect application (use SSN 111-11-1111)
+    - biz_fair_001: Needs manual review (use SSN 333-33-3333)
+    - biz_poor_001: High risk (use SSN 555-55-5555)
+    - biz_startup_001: Startup (use SSN 222-22-2222)
+    """
     business_id = payload.business_id if payload else "biz_001"
 
     # Mock database of business details
     businesses = {
+        # Quick Test Scenario A: Perfect Application
+        "biz_excellent_001": {
+            "legal_name": "EXCELLENT TRUCKING INC",
+            "dba": "Excellence Transport",
+            "address": {
+                "street": "1500 Commerce Drive",
+                "city": "Dallas",
+                "state": "TX",
+                "zip": "75201",
+            },
+            "phone": "(214) 555-1000",
+            "email": "info@excellenttrucking.com",
+            "tin": "75-1234567",
+            "formation_date": "2012-03-20",
+            "entity_type": "Corporation",
+            "guarantors": [
+                {
+                    "first_name": "David",
+                    "last_name": "Excellence",
+                    "title": "CEO",
+                    "ownership_pct": 75,
+                    "address": {
+                        "street": "2500 Park Lane",
+                        "city": "Dallas",
+                        "state": "TX",
+                        "zip": "75205",
+                    },
+                    "phone": "(214) 555-1001",
+                    "email": "david@excellenttrucking.com",
+                    "ssn_last4": "1111",
+                },
+                {
+                    "first_name": "Mary",
+                    "last_name": "Excellence",
+                    "title": "CFO",
+                    "ownership_pct": 25,
+                    "address": {
+                        "street": "2500 Park Lane",
+                        "city": "Dallas",
+                        "state": "TX",
+                        "zip": "75205",
+                    },
+                    "phone": "(214) 555-1002",
+                    "email": "mary@excellenttrucking.com",
+                    "ssn_last4": "2222",
+                },
+            ],
+        },
+        # Quick Test Scenario B: Needs Manual Review
+        "biz_fair_001": {
+            "legal_name": "FAIR LOGISTICS LLC",
+            "dba": "Fair Logistics",
+            "address": {
+                "street": "500 Industrial Way",
+                "city": "Atlanta",
+                "state": "GA",
+                "zip": "30301",
+            },
+            "phone": "(404) 555-2000",
+            "email": "info@fairlogistics.com",
+            "tin": "58-2345678",
+            "formation_date": "2020-06-15",
+            "entity_type": "LLC",
+            "guarantors": [
+                {
+                    "first_name": "Steve",
+                    "last_name": "Fairbanks",
+                    "title": "Managing Member",
+                    "ownership_pct": 100,
+                    "address": {
+                        "street": "123 Peachtree St",
+                        "city": "Atlanta",
+                        "state": "GA",
+                        "zip": "30303",
+                    },
+                    "phone": "(404) 555-2001",
+                    "email": "steve@fairlogistics.com",
+                    "ssn_last4": "3333",
+                },
+            ],
+        },
+        # Quick Test Scenario C: High Risk
+        "biz_poor_001": {
+            "legal_name": "POOR TRANSPORT CO",
+            "dba": "Poor Transport",
+            "address": {
+                "street": "1000 Detroit Ave",
+                "city": "Detroit",
+                "state": "MI",
+                "zip": "48201",
+            },
+            "phone": "(313) 555-3000",
+            "email": "info@poortransport.com",
+            "tin": "38-3456789",
+            "formation_date": "2021-09-01",
+            "entity_type": "Corporation",
+            "guarantors": [
+                {
+                    "first_name": "Rick",
+                    "last_name": "Poorman",
+                    "title": "President",
+                    "ownership_pct": 100,
+                    "address": {
+                        "street": "500 Woodward Ave",
+                        "city": "Detroit",
+                        "state": "MI",
+                        "zip": "48226",
+                    },
+                    "phone": "(313) 555-3001",
+                    "email": "rick@poortransport.com",
+                    "ssn_last4": "5555",
+                },
+            ],
+        },
+        # Quick Test Scenario D: Startup
+        "biz_startup_001": {
+            "legal_name": "NEW STARTUP DELIVERY",
+            "dba": "Startup Delivery",
+            "address": {
+                "street": "100 Tech Row",
+                "city": "Austin",
+                "state": "TX",
+                "zip": "78701",
+            },
+            "phone": "(512) 555-4000",
+            "email": "info@startupdelivery.com",
+            "tin": "84-4567890",
+            "formation_date": "2024-01-15",  # Very recent - startup
+            "entity_type": "LLC",
+            "guarantors": [
+                {
+                    "first_name": "Emily",
+                    "last_name": "Startup",
+                    "title": "Founder",
+                    "ownership_pct": 60,
+                    "address": {
+                        "street": "200 Congress Ave",
+                        "city": "Austin",
+                        "state": "TX",
+                        "zip": "78701",
+                    },
+                    "phone": "(512) 555-4001",
+                    "email": "emily@startupdelivery.com",
+                    "ssn_last4": "2222",  # Good credit
+                },
+                {
+                    "first_name": "Jason",
+                    "last_name": "Cofounder",
+                    "title": "Co-Founder",
+                    "ownership_pct": 40,
+                    "address": {
+                        "street": "300 6th Street",
+                        "city": "Austin",
+                        "state": "TX",
+                        "zip": "78702",
+                    },
+                    "phone": "(512) 555-4002",
+                    "email": "jason@startupdelivery.com",
+                    "ssn_last4": "1111",  # Excellent credit
+                },
+            ],
+        },
+        # Standard test businesses
+        "biz_good_001": {
+            "legal_name": "GOOD FREIGHT SOLUTIONS",
+            "dba": "Good Freight",
+            "address": {
+                "street": "750 Market Street",
+                "city": "Denver",
+                "state": "CO",
+                "zip": "80202",
+            },
+            "phone": "(303) 555-5000",
+            "email": "info@goodfreight.com",
+            "tin": "84-5678901",
+            "formation_date": "2018-04-10",
+            "entity_type": "Corporation",
+            "guarantors": [
+                {
+                    "first_name": "Michael",
+                    "last_name": "Goodman",
+                    "title": "CEO",
+                    "ownership_pct": 100,
+                    "address": {
+                        "street": "900 Larimer St",
+                        "city": "Denver",
+                        "state": "CO",
+                        "zip": "80204",
+                    },
+                    "phone": "(303) 555-5001",
+                    "email": "michael@goodfreight.com",
+                    "ssn_last4": "2222",
+                },
+            ],
+        },
         "biz_001": {
             "legal_name": "KAAJ TECHNOLOGIES INC.",
             "dba": "Kaaj Tech",
