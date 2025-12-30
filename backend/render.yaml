@@ -10,7 +10,8 @@ services:
     plan: free
     region: oregon
     runtime: python
-    buildCommand: pip install -r requirements.txt && alembic upgrade head
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
     startCommand: python -m app.workflows.worker & uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: DATABASE_URL
