@@ -1,0 +1,24 @@
+databases:
+  - name: lender-matching-db
+    plan: free
+    region: oregon
+    postgresMajorVersion: 16
+
+services:
+  - type: web
+    name: lender-matching-api
+    plan: free
+    region: oregon
+    runtime: python
+    buildCommand: pip install -r requirements.txt && alembic upgrade head
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: lender-matching-db
+          property: connectionString
+      - key: ENVIRONMENT
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+
